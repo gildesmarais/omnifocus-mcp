@@ -1,0 +1,5 @@
+omnifocus-mcp
+*.test
+*.out
+.env
+.DS_Store
