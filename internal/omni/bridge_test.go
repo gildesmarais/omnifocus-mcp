@@ -2,7 +2,9 @@ package omni
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -90,5 +92,50 @@ func TestClassify(t *testing.T) {
 	}
 	if errors.Is(classify("boom", cause), ErrNotRunning) {
 		t.Error("generic")
+	}
+	if errors.Is(classify("execution error: Can't get object. (-1728)", cause), ErrNotRunning) {
+		t.Error("-1728 is a script error, not 'not running'")
+	}
+}
+
+func TestMarshalEscapesLineSeparators(t *testing.T) {
+	b, err := json.Marshal("a\u2028b\u2029c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(string(b), "\u2028\u2029") || !strings.Contains(string(b), `\u2028`) || !strings.Contains(string(b), `\u2029`) {
+		t.Fatalf("json.Marshal must escape U+2028/2029: %q", b)
+	}
+}
+
+func TestWriteTimeoutLongerAndWarnsOfPartialApply(t *testing.T) {
+	b := &Bridge{Runner: slow{}}
+	if b.timeoutFor("add_tasks") != DefaultWriteTimeout || b.timeoutFor("delete") != DefaultWriteTimeout || b.timeoutFor("tasks") != DefaultTimeout {
+		t.Fatal("write scripts need the longer default timeout")
+	}
+	if DefaultWriteTimeout < 120*time.Second {
+		t.Fatal("write timeout too short")
+	}
+	b = &Bridge{Runner: slow{}, WriteTimeout: 10 * time.Millisecond}
+	_, err := b.AddTasks(context.Background(), []TaskAdd{{Name: "x"}})
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "partially applied") || !strings.Contains(err.Error(), "re-list") {
+		t.Fatalf("got %v", err)
+	}
+	_, err = (&Bridge{Runner: slow{}, Timeout: 10 * time.Millisecond}).ListTasks(context.Background(), TaskFilter{})
+	if !errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "partially") {
+		t.Fatalf("reads must not claim partial apply: %v", err)
+	}
+}
+
+func TestOsascriptSourceTravelsOnStdinNotArgv(t *testing.T) {
+	cmd := osascriptCmd(context.Background(), "SECRET-HOUSEHOLD-DATA")
+	for _, a := range cmd.Args {
+		if strings.Contains(a, "SECRET") {
+			t.Fatalf("source leaked into argv: %q", a)
+		}
+	}
+	got, err := io.ReadAll(cmd.Stdin)
+	if err != nil || string(got) != "SECRET-HOUSEHOLD-DATA" {
+		t.Fatalf("stdin = %q %v", got, err)
 	}
 }
