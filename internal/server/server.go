@@ -19,6 +19,7 @@ func New(b *omni.Bridge, version string) *mcp.Server {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, listPerspectives(b))
 	addReadTools(s, b)
+	addWriteTools(s, b)
 	s.AddReceivingMiddleware(hardenCalls)
 	return s
 }

@@ -122,3 +122,21 @@ func TestNullArgumentsDoNotPanic(t *testing.T) {
 		}
 	}
 }
+
+func TestEditTasksOverMCP(t *testing.T) {
+	res := `[{"id":"a","ok":true,"task":{"id":"a","name":"N","status":"Available","tags":[]}}]`
+	out, r := call(t, res, "edit_tasks", map[string]any{"patches": []any{map[string]any{"id": "a", "defer": nil, "flagged": true}}})
+	if r.IsError {
+		t.Fatalf("%+v", r)
+	}
+	rs := out["results"].([]any)
+	if len(rs) != 1 || rs[0].(map[string]any)["ok"] != true {
+		t.Fatalf("%v", out)
+	}
+	if !strings.Contains(lastSrc, `\"defer\":null`) {
+		t.Fatalf("null defer not forwarded: %s", lastSrc)
+	}
+	if _, r := call(t, `[{"id":"n","ok":true}]`, "add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "x"}}}); r.IsError {
+		t.Fatalf("add_tasks: %+v", r)
+	}
+}

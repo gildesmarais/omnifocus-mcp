@@ -8,6 +8,7 @@ MCP server (stdio) for OmniFocus, written in Go. It runs Omni Automation JavaScr
 | --- | --- |
 | `list_perspectives` | implemented (T0) |
 | `list_tasks`, `list_projects`, `list_tags`, `list_folders`, `get_task`, `get_project`, `get_tag`, `get_folder` | implemented (T1) |
+| `add_tasks`, `edit_tasks` | implemented (T2) |
 | everything else below | specified, not yet implemented |
 
 ## Install and configure
@@ -52,8 +53,8 @@ Per-type getters `get_task`, `get_project`, `get_tag`, `get_folder` (not one `ge
 
 ### Task writes
 
-- `add_tasks` — `{tasks: [{name, note?, flagged?, defer?, due?, planned?, project? | parent? (default inbox), tags?: [id|name]}]}`; returns created ids.
-- `edit_tasks` — `{patches: [{id, name?, note?, flagged?, defer?, due?, planned? (null clears), complete? | uncomplete?, move?: {project: id} | {inbox: true} | {parent: id}, tags?: {add?: [..], remove?: [..]}}]}`. `complete` and `uncomplete` are mutually exclusive; `move` takes exactly one target.
+- `add_tasks` — `{tasks: [{name, note?, flagged?, defer?, due?, planned?, project? | parent? (default inbox), tags?: [id|name]}]}`; returns `{results: [{id, ok, error?, task?}]}`, one per task in order, with the created task records. Dates `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS`; tags by id or unambiguous name.
+- `edit_tasks` — `{patches: [{id, name?, note?, flagged?, defer?, due?, planned? (null clears), complete? | uncomplete?, move?: {project: id} | {inbox: true} | {parent: id}, tags?: {add?: [..], remove?: [..]}}]}`. `complete` and `uncomplete` are mutually exclusive; `move` takes exactly one target. `null` clears `note` and the three dates; `name` cannot be empty; a patch must change something. Returns `{results: [{id, ok, error?, task?}]}` in input order with the updated task records; an item that fails validation (bad date, empty name, contradictory move, unknown or ambiguous tag) or fails in OmniFocus (unknown id) gets `ok: false` and does not affect the others. One script call per batch (plus one tag lookup when a patch names tags).
 
 ### Structure writes
 
