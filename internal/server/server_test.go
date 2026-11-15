@@ -160,3 +160,35 @@ func TestStructureToolsOverMCP(t *testing.T) {
 		}
 	}
 }
+
+func TestToolAnnotations(t *testing.T) {
+	ctx := context.Background()
+	ct, st := mcp.NewInMemoryTransports()
+	if _, err := New(&omni.Bridge{Runner: fakeRunner{`[]`}}, "test").Connect(ctx, st, nil); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for tool, err := range cs.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		n++
+		a := tool.Annotations
+		if a == nil || a.OpenWorldHint == nil || *a.OpenWorldHint {
+			t.Errorf("%s: OpenWorldHint must be false", tool.Name)
+		}
+		if (tool.Name == "add" || tool.Name == "add_tasks") && a != nil && a.IdempotentHint {
+			t.Errorf("%s: adds are not idempotent", tool.Name)
+		}
+		if tool.Name == "drop" && !strings.Contains(tool.Description, "drops its tasks") {
+			t.Errorf("drop description: %s", tool.Description)
+		}
+	}
+	if n < 14 {
+		t.Fatalf("only %d tools listed", n)
+	}
+}

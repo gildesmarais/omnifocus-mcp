@@ -16,7 +16,7 @@ func New(b *omni.Bridge, version string) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_perspectives",
 		Description: "List OmniFocus perspectives. Built-in ones have a null id and builtin=true.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, listPerspectives(b))
 	addReadTools(s, b)
 	addWriteTools(s, b)

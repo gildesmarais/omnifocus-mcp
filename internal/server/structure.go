@@ -24,8 +24,8 @@ type structOut struct {
 }
 
 func addStructureTools(s *mcp.Server, b *omni.Bridge) {
-	notDestructive := &mcp.ToolAnnotations{DestructiveHint: new(false)}
-	destructive := &mcp.ToolAnnotations{DestructiveHint: new(true)}
+	notDestructive := &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(false)}
+	destructive := &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(false)}
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "add",
 		Description: "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold) and sequential (project). Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
@@ -46,7 +46,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "drop",
-		Description: "Drop tasks, projects, tags or folders (reversible: edit a project or tag back to Active). Guard enforced by OmniFocus script: a tag is refused while it has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
+		Description: "Drop tasks, projects, tags or folders (reversible: edit a project or tag back to Active). Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
 		Annotations: notDestructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in refsIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.DropObjects(ctx, in.Items)
@@ -54,7 +54,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "delete",
-		Description: "Permanently delete tasks, projects, tags or folders. IRREVERSIBLE. Guards: a tag or folder is deleted only when already dropped and empty (delete children first); tasks and projects are deleted directly. Returns one result per item; a refusal comes back as that item's error with the reason.",
+		Description: "Permanently delete tasks, projects, tags or folders. IRREVERSIBLE. Guards: a tag or folder is deleted only when already dropped and empty (delete children first); a task or project is deleted only without remaining (incomplete) tasks or subtasks; drop it instead. Returns one result per item; a refusal comes back as that item's error with the reason.",
 		Annotations: destructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in refsIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.DeleteObjects(ctx, in.Items)

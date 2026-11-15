@@ -33,7 +33,7 @@ func writeSchema[In any]() *jsonschema.Schema {
 }
 
 func addWriteTools(s *mcp.Server, b *omni.Bridge) {
-	notDestructive := &mcp.ToolAnnotations{DestructiveHint: new(false)}
+	notDestructive := &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(false)}
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "add_tasks",
 		Description: "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",

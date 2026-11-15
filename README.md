@@ -32,11 +32,11 @@ command = "/absolute/path/to/omnifocus-mcp"
 args = []
 ```
 
-Tools surface as `omnifocus__<tool>`; allow read tools in unattended jobs and gate `drop_*`/`delete_*` with always-ask.
+Tools surface as `omnifocus__<tool>`; allow read tools in unattended jobs and gate the `drop` and `delete` tools with always-ask (e.g. zeroclaw `omnifocus__drop`, `omnifocus__delete`).
 
 ## Tool contract
 
-Conventions: ids are OmniFocus `primaryKey` strings. Dates are ISO 8601 strings (`2026-11-18` or `2026-11-18T08:00:00`, local time when no offset). In patches, an omitted field means unchanged and an explicit `null` clears (dates, note-free fields). Batch tools apply items in order, return one result per item (`ok` or `error`), and never abort the batch on one failure. Invalid input is rejected at construction before any script runs.
+Conventions: ids are OmniFocus `primaryKey` strings. Dates are ISO 8601 strings (`2026-11-18`, `2026-11-18T08:00:00`, or with an offset: `2026-11-18T08:00:00Z`, `...+01:00`). No offset means local time; a date-only value means 00:00 local. Returned dates are local time without offset. In patches, an omitted field means unchanged and an explicit `null` clears (dates, note-free fields). Batch tools apply items in order, return one result per item (`ok` or `error`), and never abort the batch on one failure. Invalid input is rejected at construction before any script runs.
 
 ### Naming decision
 
@@ -44,7 +44,7 @@ Per-type getters `get_task`, `get_project`, `get_tag`, `get_folder` (not one `ge
 
 ### Read (read-only)
 
-- `list_tasks` — filters (all optional, AND-combined): `inbox` (bool), `project` (id or name), `tag` (id or name), `available` (bool: not blocked/deferred/completed/dropped), `flagged` (bool), `completed` (bool), `due_before`, `defer_before` (dates), `search` (substring over name and note), `limit` (default 50; `null` = all). Returns tasks with id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed, status.
+- `list_tasks` — filters (all optional, AND-combined): `inbox` (bool; includes nested inbox tasks; combining `inbox: true` with `project` is an error), `project` (id or name), `tag` (id or name), `available` (bool: not blocked/deferred/completed/dropped), `flagged` (bool), `completed` (bool), `due_before`, `defer_before` (dates), `search` (substring over name and note), `limit` (default 50; `null` = all). Returns tasks with id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed, status.
 - `list_projects` — `status` filter (`Active`, `OnHold`, `Done`, `Dropped`), optional `folder`, `search`, `limit`.
 - `list_tags` — includes status and `remainingTasks`.
 - `list_folders` — includes parent and status.
@@ -53,8 +53,8 @@ Per-type getters `get_task`, `get_project`, `get_tag`, `get_folder` (not one `ge
 
 ### Task writes
 
-- `add_tasks` — `{tasks: [{name, note?, flagged?, defer?, due?, planned?, project? | parent? (default inbox), tags?: [id|name]}]}`; returns `{results: [{id, ok, error?, task?}]}`, one per task in order, with the created task records. Dates `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS`; tags by id or unambiguous name.
-- `edit_tasks` — `{patches: [{id, name?, note?, flagged?, defer?, due?, planned? (null clears), complete? | uncomplete?, move?: {project: id} | {inbox: true} | {parent: id}, tags?: {add?: [..], remove?: [..]}}]}`. `complete` and `uncomplete` are mutually exclusive; `move` takes exactly one target. `null` clears `note` and the three dates; `name` cannot be empty; a patch must change something. Returns `{results: [{id, ok, error?, task?}]}` in input order with the updated task records; an item that fails validation (bad date, empty name, contradictory move, unknown or ambiguous tag) or fails in OmniFocus (unknown id) gets `ok: false` and does not affect the others. One script call per batch (plus one tag lookup when a patch names tags).
+- `add_tasks` — `{tasks: [{name, note?, flagged?, defer?, due?, planned?, project? | parent? (default inbox), tags?: [id|name]}]}`; returns `{results: [{id, ok, error?, task?}]}`, one per task in order, with the created task records. Dates as above; tags by id or unambiguous name.
+- `edit_tasks` — `{patches: [{id, name?, note?, flagged?, defer?, due?, planned? (null clears), complete? | uncomplete?, move?: {project: id} | {inbox: true} | {parent: id}, tags?: {add?: [..], remove?: [..]}}]}`. `complete` and `uncomplete` are mutually exclusive; `move` takes exactly one target. `null` clears `note` and the three dates; `name` cannot be empty; a patch must change something. Returns `{results: [{id, ok, error?, task?}]}` in input order with the updated task records; an item that fails validation (bad date, empty name, contradictory move, unknown or ambiguous tag) or fails in OmniFocus (unknown id) gets `ok: false` and does not affect the others. One script call per batch (plus one tag lookup when a patch names tags). Per-item edits are not atomic: if a later field of a patch throws, earlier field changes stay applied and the item reports `ok: false`; re-read the task before retrying. A project id is not a task id: `get_task`, `edit_tasks`, `add_tasks` parents and `drop`/`delete` with kind `task` reject it ("is a project, use kind project").
 
 ### Structure writes
 
@@ -67,11 +67,11 @@ Batch tools: each takes `{items: [...]}` and returns `{results: [{id, kind, ok, 
 
 Items `{kind: task|project|tag|folder, id}`; same result shape. Guards run in the script (it alone can see the counts) and surface as that item's `error`.
 
-- `drop` — Reversible. A tag may be dropped only when `remainingTasks == 0`.
-- `delete` — Irreversible. Tags and folders only when already dropped and empty (children first). Tasks and projects may be deleted directly.
+- `drop` — Reversible. Dropping a project drops its tasks. A tag may be dropped only when `remainingTasks == 0`.
+- `delete` — Irreversible. Tags and folders only when already dropped and empty (children first). A project is deleted only without remaining (incomplete) tasks, a task only without remaining subtasks; drop it instead (a dropped project deletes).
 
 ## Architecture
 
-- `internal/omni`: `Bridge.Call(ctx, script, args, &out)` composes `JSON.stringify((<js/script.js>)(JSON.parse(<json string literal>)))`, runs it through the `Runner` interface, decodes JSON. Per-call context timeout (default 30 s). Errors distinguish OmniFocus not running and missing Automation permission.
+- `internal/omni`: `Bridge.Call(ctx, script, args, &out)` composes `JSON.stringify((<js/script.js>)(JSON.parse(<json string literal>)))`, runs it through the `Runner` interface, decodes JSON. Per-call context timeout: 30 s for reads, 120 s for writes. The script travels on osascript's stdin, not argv. A write that times out may still finish (or partly apply) in OmniFocus after osascript is killed: the error says so; re-list before retrying. Errors distinguish OmniFocus not running and missing Automation permission.
 - `internal/server`: tool registration and input/output types.
 - Tests fake `Runner`; `make live` (`-tags live`) runs read-only checks against the real app.
