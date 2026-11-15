@@ -6,12 +6,12 @@
   const date = (p, k, set) => { if (has(p, k)) set(p[k] === null ? null : parseDate(p[k])); };
   return args.items.map(p => {
     try {
-      const t = need(Task.byIdentifier(p.id), "task");
+      const t = findTask(p.id);
       let pos = null;
       if (p.move) {
         if (p.move.inbox) pos = inbox.ending;
         else if (p.move.project) pos = need(Project.byIdentifier(p.move.project), "project").ending;
-        else pos = need(Task.byIdentifier(p.move.parent), "parent task").ending;
+        else pos = findTask(p.move.parent, "parent task").ending;
       }
       const tagsOf = ids => (ids || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
       const add = tagsOf(p.tagsAdd), rem = tagsOf(p.tagsRemove);

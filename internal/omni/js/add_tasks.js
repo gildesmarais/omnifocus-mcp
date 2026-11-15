@@ -5,7 +5,7 @@
     try {
       let pos = inbox.ending;
       if (a.project) pos = need(Project.byIdentifier(a.project), "project").ending;
-      else if (a.parent) pos = need(Task.byIdentifier(a.parent), "parent task").ending;
+      else if (a.parent) pos = findTask(a.parent, "parent task").ending;
       const tags = (a.tags || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
       const t = new Task(a.name, pos);
       if (a.note) t.note = a.note;

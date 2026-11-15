@@ -184,3 +184,98 @@ func leftovers(t *testing.T, b *Bridge) {
 		t.Errorf("%d leftovers", n)
 	}
 }
+
+// Creates two projects "mcp-test-guard-*" with tasks and deletes them at the end.
+func TestLiveKindAndDeleteGuards(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	suffix := time.Now().Format("150405")
+	var created []StructRef
+	t.Cleanup(func() {
+		for i := len(created) - 1; i >= 0; i-- {
+			b.DropObjects(ctx, []StructRef{created[i]})
+			b.DeleteObjects(ctx, []StructRef{created[i]})
+		}
+		leftovers(t, b)
+	})
+	addProject := func(name string) string {
+		t.Helper()
+		rs, err := b.AddStructure(ctx, []StructAdd{{Kind: "project", Name: name}})
+		if err != nil || !rs[0].OK {
+			t.Fatalf("%+v %v", rs, err)
+		}
+		created = append(created, StructRef{Kind: "project", ID: rs[0].ID})
+		return rs[0].ID
+	}
+	addTask := func(a TaskAdd) string {
+		t.Helper()
+		rs, err := b.AddTasks(ctx, []TaskAdd{a})
+		if err != nil || !rs[0].OK {
+			t.Fatalf("%+v %v", rs, err)
+		}
+		created = append(created, StructRef{Kind: "task", ID: rs[0].ID})
+		return rs[0].ID
+	}
+	refuse := func(r StructResult, err error, want string) {
+		t.Helper()
+		if err != nil || r.OK || !strings.Contains(r.Error, want) {
+			t.Fatalf("want refusal %q: %+v %v", want, r, err)
+		}
+	}
+	p := addProject("mcp-test-guard-" + suffix)
+	parent := addTask(TaskAdd{Name: "mcp-test-parent", Project: p})
+	addTask(TaskAdd{Name: "mcp-test-child", Parent: parent})
+	other := addTask(TaskAdd{Name: "mcp-test-other", Project: p, Due: "2026-12-01T08:00:00+01:00"})
+
+	// ISO offsets are honored: the stored instant equals the offset time, reported local.
+	want, _ := time.Parse(time.RFC3339, "2026-12-01T08:00:00+01:00")
+	if x, err := b.GetTask(ctx, other); err != nil || x.Due != want.Local().Format("2006-01-02T15:04:05") {
+		t.Fatalf("offset due: %+v want %s (%v)", x, want.Local(), err)
+	}
+
+	// A project id is not a task.
+	if _, err := b.GetTask(ctx, p); err == nil || !strings.Contains(err.Error(), "is a project") {
+		t.Fatalf("get_task(project id): %v", err)
+	}
+	yes := true
+	rs, err := b.EditTasks(ctx, []TaskEdit{{ID: p, Flagged: &yes}, {ID: other, Move: &Move{Parent: p}}})
+	if err != nil || rs[0].OK || rs[1].OK || !strings.Contains(rs[0].Error, "is a project") || !strings.Contains(rs[1].Error, "is a project") {
+		t.Fatalf("edit_tasks: %+v %v", rs, err)
+	}
+	if rs, err := b.AddTasks(ctx, []TaskAdd{{Name: "mcp-test-x", Parent: p}}); err != nil || rs[0].OK || !strings.Contains(rs[0].Error, "is a project") {
+		t.Fatalf("add_tasks parent: %+v %v", rs, err)
+	}
+	r, err := b.DropObjects(ctx, []StructRef{{Kind: "task", ID: p}})
+	refuse(r[0], err, "is a project")
+	r, err = b.DeleteObjects(ctx, []StructRef{{Kind: "task", ID: p}})
+	refuse(r[0], err, "is a project")
+
+	// Remaining work blocks delete.
+	r, err = b.DeleteObjects(ctx, []StructRef{{Kind: "task", ID: parent}})
+	refuse(r[0], err, "remaining subtask")
+	r, err = b.DeleteObjects(ctx, []StructRef{{Kind: "project", ID: p}})
+	refuse(r[0], err, "remaining task")
+	if _, err := b.GetProject(ctx, p); err != nil {
+		t.Fatalf("refused delete must keep the project: %v", err)
+	}
+
+	// Inbox filter: top-level and nested inbox tasks, never project tasks.
+	in := true
+	ts, err := b.ListTasks(ctx, TaskFilter{Inbox: &in})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range ts {
+		if !x.Inbox || x.Project != nil {
+			t.Fatalf("non-inbox task in inbox list: %+v", x)
+		}
+	}
+
+	// Dropping a project drops its tasks, so a dropped project deletes.
+	if rs, err := b.DropObjects(ctx, []StructRef{{Kind: "project", ID: p}}); err != nil || !rs[0].OK {
+		t.Fatalf("drop: %+v %v", rs, err)
+	}
+	if rs, err := b.DeleteObjects(ctx, []StructRef{{Kind: "project", ID: p}}); err != nil || !rs[0].OK {
+		t.Fatalf("delete dropped project with tasks: %+v %v", rs, err)
+	}
+}

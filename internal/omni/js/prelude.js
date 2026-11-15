@@ -26,7 +26,21 @@ const shapeTask = t => {
 };
 // Structure helpers (add/edit/drop/delete). byKind maps a kind to its class; tags nest under tags, the rest under library.
 const byKind = { task: Task, project: Project, tag: Tag, folder: Folder };
-const find = (kind, id) => { const o = byKind[kind].byIdentifier(id); if (!o) throw new Error(kind + " not found"); return o; };
+// Task.byIdentifier(projectId) returns the project's root task; that is a project, not a task.
+const isProjectRoot = t => !!(t.containingProject && t.containingProject.task === t);
+// Task lookup for every task or parent target; what labels the error ("task", "parent task").
+const findTask = (id, what) => {
+  const t = Task.byIdentifier(id);
+  if (!t) throw new Error((what || "task") + " not found");
+  if (isProjectRoot(t)) throw new Error((what || "task") + " " + id + " is a project, use kind project");
+  return t;
+};
+const find = (kind, id) => {
+  if (kind === "task") return findTask(id);
+  const o = byKind[kind].byIdentifier(id); if (!o) throw new Error(kind + " not found"); return o;
+};
+// Tasks neither completed nor dropped.
+const remaining = ts => ts.filter(t => { const s = statusName(t.taskStatus); return s !== "Completed" && s !== "Dropped"; });
 // A project, tag, folder or task as StructResult in write_structure.go.
 const shapeStruct = (kind, o) => {
   const r = { id: o.id.primaryKey, kind: kind, ok: true, name: o.name };

@@ -5,11 +5,13 @@
 
   if (args.id) {
     const t = Task.byIdentifier(args.id);
-    return t ? [shapeTask(t)] : [];
+    if (!t) return [];
+    if (isProjectRoot(t)) throw new Error("task " + args.id + " is a project, use kind project");
+    return [shapeTask(t)];
   }
 
   let pool = flattenedTasks;
-  if (args.inbox === true) pool = inbox;
+  if (args.inbox === true) pool = flattenedTasks.filter(t => t.inInbox); // `inbox` alone lists top-level tasks only
   else if (args.project) {
     const ps = flattenedProjects.filter(p => match(p, args.project));
     if (ps.length === 0) return [];

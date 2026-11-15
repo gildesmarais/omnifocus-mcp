@@ -107,7 +107,10 @@ func checkDate(field, s string) error {
 	if _, err := time.Parse("2006-01-02T15:04:05", s); err == nil {
 		return nil
 	}
-	return fmt.Errorf("%s: %q is not YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS", field, s)
+	if _, err := time.Parse(time.RFC3339, s); err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %q is not YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS or an RFC 3339 timestamp with offset (Z, +01:00)", field, s)
 }
 
 func checkLimit(l *int) error {
@@ -121,6 +124,9 @@ func checkLimit(l *int) error {
 func (b *Bridge) ListTasks(ctx context.Context, f TaskFilter) ([]Task, error) {
 	if err := errors.Join(checkDate("due_before", f.DueBefore), checkDate("defer_before", f.DeferBefore), checkLimit(f.Limit)); err != nil {
 		return nil, err
+	}
+	if f.Inbox != nil && *f.Inbox && f.Project != "" {
+		return nil, errors.New("inbox: cannot be combined with project (inbox tasks belong to no project)")
 	}
 	var out []Task
 	if err := b.Call(ctx, "tasks", f, &out); err != nil {
