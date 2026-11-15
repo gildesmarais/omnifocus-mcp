@@ -16,6 +16,7 @@ func New(b *omni.Bridge, version string) *mcp.Server {
 		Description: "List OmniFocus perspectives. Built-in ones have a null id and builtin=true.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, listPerspectives(b))
+	addReadTools(s, b)
 	return s
 }
 

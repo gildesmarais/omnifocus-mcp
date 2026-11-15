@@ -7,6 +7,7 @@ MCP server (stdio) for OmniFocus, written in Go. It runs Omni Automation JavaScr
 | Tool | State |
 | --- | --- |
 | `list_perspectives` | implemented (T0) |
+| `list_tasks`, `list_projects`, `list_tags`, `list_folders`, `get_task`, `get_project`, `get_tag`, `get_folder` | implemented (T1) |
 | everything else below | specified, not yet implemented |
 
 ## Install and configure
