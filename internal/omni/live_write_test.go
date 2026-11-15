@@ -11,23 +11,12 @@ import (
 )
 
 // Writes only inside the project named "MCP Sandbox" (created if missing) and
-// completes its test tasks at the end; nothing is deleted.
+// deletes the tasks it created at the end.
 func TestLiveTaskWrites(t *testing.T) {
 	ctx := context.Background()
 	b := New()
 
-	raw, err := b.Runner.Run(ctx, `JSON.stringify((function () {
-		let p = flattenedProjects.find(p => p.name === "MCP Sandbox");
-		if (!p) p = new Project("MCP Sandbox");
-		return p.id.primaryKey;
-	})())`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var sandbox string
-	if err := json.Unmarshal([]byte(raw), &sandbox); err != nil || sandbox == "" {
-		t.Fatalf("sandbox id %q %v", raw, err)
-	}
+	sandbox := sandboxProject(t, b)
 
 	tags, err := b.ListTags(ctx)
 	if err != nil {
@@ -99,7 +88,7 @@ func TestLiveTaskWrites(t *testing.T) {
 	okAll(adds, 2)
 	a, c := adds[0].ID, adds[1].ID
 	t.Cleanup(func() {
-		rs, err := b.EditTasks(ctx, []TaskEdit{{ID: a, Complete: true}, {ID: c, Complete: true}})
+		rs, err := b.DeleteObjects(ctx, []StructRef{{Kind: "task", ID: a}, {Kind: "task", ID: c}})
 		if err != nil || !rs[0].OK || !rs[1].OK {
 			t.Errorf("cleanup: %+v %v", rs, err)
 		}
@@ -151,4 +140,22 @@ func TestLiveTaskWrites(t *testing.T) {
 	if x := get(a); x.Completed {
 		t.Fatalf("uncomplete: %+v", x)
 	}
+}
+
+// sandboxProject returns the id of the project "MCP Sandbox", creating it if missing.
+func sandboxProject(t *testing.T, b *Bridge) string {
+	t.Helper()
+	raw, err := b.Runner.Run(context.Background(), `JSON.stringify((function () {
+		let p = flattenedProjects.find(p => p.name === "MCP Sandbox");
+		if (!p) p = new Project("MCP Sandbox");
+		return p.id.primaryKey;
+	})())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err := json.Unmarshal([]byte(raw), &id); err != nil || id == "" {
+		t.Fatalf("sandbox id %q %v", raw, err)
+	}
+	return id
 }
