@@ -1,0 +1,186 @@
+//go:build live
+
+package omni
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+)
+
+// Creates everything it touches (folder "MCP Sandbox Folder", tags "mcp-test-*",
+// a project and tasks inside "MCP Sandbox") and mutates only objects it created
+// by id. Everything is deleted at the end; a final sweep reports leftovers.
+func TestLiveStructureWrites(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	sandbox := sandboxProject(t, b)
+	suffix := time.Now().Format("150405")
+
+	one := func(rs []StructResult, err error) StructResult {
+		t.Helper()
+		if err != nil || len(rs) != 1 {
+			t.Fatalf("%+v %v", rs, err)
+		}
+		return rs[0]
+	}
+	mustOK := func(r StructResult) StructResult {
+		t.Helper()
+		if !r.OK {
+			t.Fatalf("want ok: %+v", r)
+		}
+		return r
+	}
+	refuse := func(r StructResult, want string) {
+		t.Helper()
+		if r.OK || !strings.Contains(r.Error, want) {
+			t.Fatalf("want refusal %q: %+v", want, r)
+		}
+	}
+	add := func(a StructAdd) StructResult { t.Helper(); return mustOK(one(b.AddStructure(ctx, []StructAdd{a}))) }
+	edit := func(e StructEdit) StructResult { t.Helper(); return mustOK(one(b.EditStructure(ctx, []StructEdit{e}))) }
+	drop := func(k, id string) StructResult { return one(b.DropObjects(ctx, []StructRef{{Kind: k, ID: id}})) }
+	del := func(k, id string) StructResult { return one(b.DeleteObjects(ctx, []StructRef{{Kind: k, ID: id}})) }
+
+	var created []StructRef // fallback cleanup, newest first on use
+	track := func(k, id string) { created = append(created, StructRef{Kind: k, ID: id}) }
+	t.Cleanup(func() {
+		for i := len(created) - 1; i >= 0; i-- {
+			c := created[i]
+			if c.Kind == kindTag || c.Kind == kindFolder {
+				drop(c.Kind, c.ID)
+			}
+			del(c.Kind, c.ID) // refusals for already-deleted objects are expected
+		}
+		leftovers(t, b)
+	})
+
+	folder := add(StructAdd{Kind: "folder", Name: "MCP Sandbox Folder"})
+	track("folder", folder.ID)
+	parentTag := add(StructAdd{Kind: "tag", Name: "mcp-test-parent-" + suffix})
+	track("tag", parentTag.ID)
+	childTag := add(StructAdd{Kind: "tag", Name: "mcp-test-child-" + suffix, Parent: parentTag.ID})
+	track("tag", childTag.ID)
+	proj := add(StructAdd{Kind: "project", Name: "mcp-test-proj-" + suffix, Parent: folder.ID, Sequential: true})
+	track("project", proj.ID)
+
+	if g, err := b.GetTag(ctx, childTag.ID); err != nil || g.Parent == nil || g.Parent.ID != parentTag.ID {
+		t.Fatalf("child tag: %+v %v", g, err)
+	}
+	if p, err := b.GetProject(ctx, proj.ID); err != nil || p.Folder == nil || p.Folder.ID != folder.ID || !p.Sequential {
+		t.Fatalf("project: %+v %v", p, err)
+	}
+
+	// rename + status
+	edit(StructEdit{Kind: "project", ID: proj.ID, Name: new("mcp-test-proj-renamed-" + suffix), Status: "OnHold"})
+	if p, _ := b.GetProject(ctx, proj.ID); p.Name != "mcp-test-proj-renamed-"+suffix || p.Status != "OnHold" {
+		t.Fatalf("after rename/hold: %+v", p)
+	}
+	edit(StructEdit{Kind: "project", ID: proj.ID, Status: "Active"})
+	if p, _ := b.GetProject(ctx, proj.ID); p.Status != "Active" {
+		t.Fatalf("after reactivate: %+v", p)
+	}
+	edit(StructEdit{Kind: "folder", ID: folder.ID, Name: new("MCP Sandbox Folder")}) // rename path for folders
+	edit(StructEdit{Kind: "tag", ID: childTag.ID, Status: "OnHold"})
+	if g, _ := b.GetTag(ctx, childTag.ID); g.Status != "OnHold" {
+		t.Fatalf("tag hold: %+v", g)
+	}
+	edit(StructEdit{Kind: "tag", ID: childTag.ID, Status: "Active"})
+
+	// move project to root and back
+	edit(StructEdit{Kind: "project", ID: proj.ID, Move: &StructMove{Parent: NullableString{Set: true, Null: true}}})
+	if p, _ := b.GetProject(ctx, proj.ID); p.Folder != nil {
+		t.Fatalf("project not at root: %+v", p)
+	}
+	edit(StructEdit{Kind: "project", ID: proj.ID, Move: &StructMove{Parent: NullableString{Set: true, Value: folder.ID}}})
+	if p, _ := b.GetProject(ctx, proj.ID); p.Folder == nil || p.Folder.ID != folder.ID {
+		t.Fatalf("project not back in folder: %+v", p)
+	}
+
+	// reorder tags: child to root next to parent, then back under it; cycle refused
+	edit(StructEdit{Kind: "tag", ID: childTag.ID, Reorder: &StructReorder{After: parentTag.ID}})
+	if g, _ := b.GetTag(ctx, childTag.ID); g.Parent != nil {
+		t.Fatalf("reorder should adopt sibling's (root) parent: %+v", g)
+	}
+	edit(StructEdit{Kind: "tag", ID: childTag.ID, Move: &StructMove{Parent: NullableString{Set: true, Value: parentTag.ID}}})
+	refuse(one(b.EditStructure(ctx, []StructEdit{{Kind: "tag", ID: parentTag.ID, Move: &StructMove{Parent: NullableString{Set: true, Value: childTag.ID}}}})), "itself")
+
+	// tag drop refused while a task carries it, allowed after untag
+	tr, err := b.AddTasks(ctx, []TaskAdd{{Name: "mcp-test-task-" + suffix, Project: sandbox, Tags: []string{childTag.ID}}})
+	if err != nil || !tr[0].OK {
+		t.Fatalf("task: %+v %v", tr, err)
+	}
+	taskID := tr[0].ID
+	track("task", taskID)
+	refuse(drop("tag", childTag.ID), "remaining")
+	if g, _ := b.GetTag(ctx, childTag.ID); g.Status != "Active" || g.RemainingTasks != 1 {
+		t.Fatalf("refused drop must not change the tag: %+v", g)
+	}
+	if rs, err := b.EditTasks(ctx, []TaskEdit{{ID: taskID, Tags: &TagEdit{Remove: []string{childTag.ID}}}}); err != nil || !rs[0].OK {
+		t.Fatalf("untag: %+v %v", rs, err)
+	}
+	mustOK(drop("tag", childTag.ID))
+	if g, _ := b.GetTag(ctx, childTag.ID); g.Status != "Dropped" {
+		t.Fatalf("tag drop: %+v", g)
+	}
+
+	// tag delete refused while Active, allowed after drop (children first)
+	refuse(del("tag", parentTag.ID), "not dropped")
+	mustOK(drop("tag", parentTag.ID))
+	refuse(del("tag", parentTag.ID), "not empty") // still has the dropped child
+	mustOK(del("tag", childTag.ID))
+	mustOK(del("tag", parentTag.ID))
+	if _, err := b.GetTag(ctx, parentTag.ID); err == nil {
+		t.Fatal("parent tag still exists")
+	}
+
+	// folder: delete refused until dropped and empty
+	refuse(del("folder", folder.ID), "not dropped")
+	mustOK(drop("folder", folder.ID))
+	if f, _ := b.GetFolder(ctx, folder.ID); f.Status != "Dropped" {
+		t.Fatalf("folder drop: %+v", f)
+	}
+	refuse(del("folder", folder.ID), "not empty")
+	mustOK(drop("project", proj.ID))
+	if p, _ := b.GetProject(ctx, proj.ID); p.Status != "Dropped" {
+		t.Fatalf("project drop: %+v", p)
+	}
+	mustOK(del("project", proj.ID))
+	if _, err := b.GetProject(ctx, proj.ID); err == nil {
+		t.Fatal("project still exists")
+	}
+	mustOK(del("folder", folder.ID))
+	mustOK(del("task", taskID))
+	if _, err := b.GetTask(ctx, taskID); err == nil {
+		t.Fatal("task still exists")
+	}
+}
+
+// leftovers fails the test when any object this suite creates still exists.
+func leftovers(t *testing.T, b *Bridge) {
+	ctx := context.Background()
+	n := 0
+	tags, _ := b.ListTags(ctx)
+	for _, g := range tags {
+		if strings.HasPrefix(g.Name, "mcp-test-") {
+			n++
+		}
+	}
+	folders, _ := b.ListFolders(ctx)
+	for _, f := range folders {
+		if f.Name == "MCP Sandbox Folder" {
+			n++
+		}
+	}
+	projects, _ := b.ListProjects(ctx, ProjectFilter{Search: "mcp-test-"})
+	for _, p := range projects {
+		if strings.HasPrefix(p.Name, "mcp-test-") {
+			n++
+		}
+	}
+	t.Logf("leftovers (mcp-test- tags/projects, MCP Sandbox Folder): %d", n)
+	if n > 0 {
+		t.Errorf("%d leftovers", n)
+	}
+}

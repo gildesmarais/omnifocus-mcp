@@ -9,7 +9,7 @@ MCP server (stdio) for OmniFocus, written in Go. It runs Omni Automation JavaScr
 | `list_perspectives` | implemented (T0) |
 | `list_tasks`, `list_projects`, `list_tags`, `list_folders`, `get_task`, `get_project`, `get_tag`, `get_folder` | implemented (T1) |
 | `add_tasks`, `edit_tasks` | implemented (T2) |
-| everything else below | specified, not yet implemented |
+| `add`, `edit`, `drop`, `delete` | implemented (T3) |
 
 ## Install and configure
 
@@ -58,13 +58,17 @@ Per-type getters `get_task`, `get_project`, `get_tag`, `get_folder` (not one `ge
 
 ### Structure writes
 
-- `add` — `{kind: project|tag|folder, name, parent? (folder for project/folder, tag for tag), status?}`.
-- `edit` — `{kind, id, name?, status?, move?: {parent: id | null}, reorder?: {before|after: id}}`. Project status: `Active`, `OnHold`, `Done`. Tag status: `Active`, `OnHold`. Folders: rename, move, reorder only.
+Batch tools: each takes `{items: [...]}` and returns `{results: [{id, kind, ok, error?, name?, status?, parent?}]}` in input order; an invalid or refused item gets `ok: false` and does not affect the others.
+
+- `add` — items `{kind: project|tag|folder, name, parent? (folder for project/folder, tag for tag; omit = root), status?, sequential? (project)}`.
+- `edit` — items `{kind, id, name?, status?, sequential? (project), move?: {parent: id | null}, reorder?: {before|after: id}}`. `move` and `reorder` are mutually exclusive (a reorder adopts the sibling's parent); moving an object into itself or a descendant is refused. Project status: `Active`, `OnHold`, `Done`. Tag status: `Active`, `OnHold` (`Active` re-activates a dropped tag). Folders: rename, move, reorder only.
 
 ### Destructive (separate names so clients can gate them)
 
-- `drop` — `{kind: task|project|tag|folder, id}`. Reversible. A tag may be dropped only when `remainingTasks == 0`.
-- `delete` — `{kind: task|project|tag|folder, id}`. Irreversible. Tags and folders only when already dropped and empty (children first). Tasks and projects may be deleted directly.
+Items `{kind: task|project|tag|folder, id}`; same result shape. Guards run in the script (it alone can see the counts) and surface as that item's `error`.
+
+- `drop` — Reversible. A tag may be dropped only when `remainingTasks == 0`.
+- `delete` — Irreversible. Tags and folders only when already dropped and empty (children first). Tasks and projects may be deleted directly.
 
 ## Architecture
 
