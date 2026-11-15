@@ -242,7 +242,7 @@ func (b *Bridge) AddTasks(ctx context.Context, adds []TaskAdd) ([]TaskResult, er
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, "add_tasks", len(adds), nil, func(i int) (writeItem, error) { return newAddItem(adds[i], tags) })
+	return runBatch(ctx, b, "add_tasks", len(adds), nil, failTask, func(i int) (writeItem, error) { return newAddItem(adds[i], tags) })
 }
 
 // EditTasks applies patches in one script call, with the same result contract as AddTasks.
@@ -260,8 +260,10 @@ func (b *Bridge) EditTasks(ctx context.Context, patches []TaskEdit) ([]TaskResul
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, "edit_tasks", len(patches), ids, func(i int) (writeItem, error) { return newPatchItem(patches[i], tags) })
+	return runBatch(ctx, b, "edit_tasks", len(patches), ids, failTask, func(i int) (writeItem, error) { return newPatchItem(patches[i], tags) })
 }
+
+func failTask(id, msg string) TaskResult { return TaskResult{ID: id, Error: msg} }
 
 // tagsIf reads the tag list only when some item refers to a tag.
 func (b *Bridge) tagsIf(ctx context.Context, need bool) ([]Tag, error) {
@@ -274,17 +276,18 @@ func (b *Bridge) tagsIf(ctx context.Context, need bool) ([]Tag, error) {
 // runBatch validates every item, sends the valid ones in a single script call
 // and merges script results back into input order. ids (optional) label
 // results whose item failed validation.
-func runBatch(ctx context.Context, b *Bridge, script string, n int, ids []string, build func(int) (writeItem, error)) ([]TaskResult, error) {
-	results := make([]TaskResult, n)
+func runBatch[R any](ctx context.Context, b *Bridge, script string, n int, ids []string, fail func(id, msg string) R, build func(int) (writeItem, error)) ([]R, error) {
+	results := make([]R, n)
 	var items []writeItem
 	var slots []int
 	for i := 0; i < n; i++ {
 		it, err := build(i)
 		if err != nil {
-			results[i] = TaskResult{Error: err.Error()}
+			id := ""
 			if ids != nil {
-				results[i].ID = ids[i]
+				id = ids[i]
 			}
+			results[i] = fail(id, err.Error())
 			continue
 		}
 		items, slots = append(items, it), append(slots, i)
@@ -292,7 +295,7 @@ func runBatch(ctx context.Context, b *Bridge, script string, n int, ids []string
 	if len(items) == 0 {
 		return results, nil
 	}
-	var got []TaskResult
+	var got []R
 	if err := b.Call(ctx, script, map[string]any{"items": items}, &got); err != nil {
 		return nil, err
 	}

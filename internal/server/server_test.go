@@ -140,3 +140,23 @@ func TestEditTasksOverMCP(t *testing.T) {
 		t.Fatalf("add_tasks: %+v", r)
 	}
 }
+
+func TestStructureToolsOverMCP(t *testing.T) {
+	res := `[{"id":"a","kind":"tag","ok":true,"name":"T","status":"Active"}]`
+	out, r := call(t, res, "edit", map[string]any{"items": []any{map[string]any{"kind": "tag", "id": "a", "move": map[string]any{"parent": nil}}}})
+	if r.IsError || out["results"].([]any)[0].(map[string]any)["ok"] != true {
+		t.Fatalf("edit: %+v", r)
+	}
+	if !strings.Contains(lastSrc, `\"move\":{\"parent\":null}`) {
+		t.Fatalf("root move not forwarded: %s", lastSrc)
+	}
+	for tool, args := range map[string]map[string]any{
+		"add":    {"items": []any{map[string]any{"kind": "tag", "name": "x"}}},
+		"drop":   {"items": []any{map[string]any{"kind": "tag", "id": "a"}}},
+		"delete": {"items": []any{map[string]any{"kind": "tag", "id": "a"}}},
+	} {
+		if _, r := call(t, res, tool, args); r.IsError {
+			t.Errorf("%s: %+v", tool, r)
+		}
+	}
+}

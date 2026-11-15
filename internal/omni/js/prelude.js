@@ -24,3 +24,18 @@ const shapeTask = t => {
   const dn = iso(t.completionDate); if (dn) o.completedAt = dn;
   return o;
 };
+// Structure helpers (add/edit/drop/delete). byKind maps a kind to its class; tags nest under tags, the rest under library.
+const byKind = { task: Task, project: Project, tag: Tag, folder: Folder };
+const find = (kind, id) => { const o = byKind[kind].byIdentifier(id); if (!o) throw new Error(kind + " not found"); return o; };
+// A project, tag, folder or task as StructResult in write_structure.go.
+const shapeStruct = (kind, o) => {
+  const r = { id: o.id.primaryKey, kind: kind, ok: true, name: o.name };
+  r.status = kind === "task" ? statusName(o.taskStatus) : statusName(o.status);
+  const par = ref(kind === "project" ? o.parentFolder : o.parent);
+  if (par) r.parent = par;
+  return r;
+};
+// Runs fn per item; one result per item, failures never abort the batch.
+const eachItem = (items, fn) => items.map(p => {
+  try { return fn(p); } catch (e) { return { id: p.id, ok: false, error: String(e.message || e) }; }
+});

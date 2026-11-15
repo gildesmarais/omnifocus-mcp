@@ -20,6 +20,7 @@ func New(b *omni.Bridge, version string) *mcp.Server {
 	}, listPerspectives(b))
 	addReadTools(s, b)
 	addWriteTools(s, b)
+	addStructureTools(s, b)
 	s.AddReceivingMiddleware(hardenCalls)
 	return s
 }

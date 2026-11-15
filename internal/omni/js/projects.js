@@ -9,7 +9,7 @@
       blocked: ts === "Blocked", tags: p.tags.map(ref)
     };
     if (p.note) o.note = p.note;
-    const f = ref(p.folder); if (f) o.folder = f;
+    const f = ref(p.parentFolder); if (f) o.folder = f;
     const df = iso(p.deferDate), du = iso(p.dueDate), pl = iso(p.plannedDate), dn = iso(p.completionDate);
     if (df) o.defer = df;
     if (du) o.due = du;
@@ -24,7 +24,7 @@
   }
   const search = args.search ? args.search.toLowerCase() : null;
   const inFolder = p => {
-    for (let f = p.folder; f; f = f.parent) if (match(f, args.folder)) return true;
+    for (let f = p.parentFolder; f; f = f.parent) if (match(f, args.folder)) return true;
     return false;
   };
   const limit = args.limit == null ? Infinity : args.limit;
