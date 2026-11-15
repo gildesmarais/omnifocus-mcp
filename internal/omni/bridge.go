@@ -16,6 +16,17 @@ import (
 //go:embed js/*.js
 var scripts embed.FS
 
+// prelude is prepended to every script; see js/prelude.js.
+var prelude = mustRead("js/prelude.js")
+
+func mustRead(name string) string {
+	b, err := scripts.ReadFile(name)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
 // DefaultTimeout bounds one bridge call when the caller's context has no deadline.
 const DefaultTimeout = 30 * time.Second
 
@@ -84,7 +95,7 @@ func compose(body string, args any) (string, error) {
 	}
 	// U+2028/2029 are valid in JSON strings but historically not in JS literals.
 	l := strings.NewReplacer(" ", ` `, " ", ` `).Replace(string(lit))
-	return "JSON.stringify((" + body + ")(JSON.parse(" + l + ")))", nil
+	return prelude + "\nJSON.stringify((" + body + ")(JSON.parse(" + l + ")))", nil
 }
 
 // OsascriptRunner is the real Runner.

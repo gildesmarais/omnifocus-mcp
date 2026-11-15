@@ -1,12 +1,7 @@
 (function (args) {
   // Serves list_tasks and get_task (args.id). Filters run here so only matches cross osascript.
-  const pad = n => (n < 10 ? "0" : "") + n;
-  const iso = d => d ? d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()) : null;
-  const ref = o => o ? { id: o.id.primaryKey, name: o.name } : null;
   const parseDate = s => (s ? new Date(s.length === 10 ? s + "T00:00:00" : s) : null);
-  const statusName = s => (/: (\w+)\]/.exec(String(s)) || [])[1];
   const OK = new Set(["Available", "DueSoon", "Next", "Overdue"]);
-  const match = (o, q) => o.id.primaryKey === q || o.name === q;
 
   const dueBefore = parseDate(args.due_before), deferBefore = parseDate(args.defer_before);
   const search = args.search ? args.search.toLowerCase() : null;

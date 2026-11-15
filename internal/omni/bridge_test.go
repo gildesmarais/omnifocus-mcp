@@ -28,7 +28,7 @@ func TestPerspectivesDecodes(t *testing.T) {
 	if len(got) != 2 || got[0].ID != nil || *got[1].ID != "abc" || !got[0].Builtin {
 		t.Fatalf("unexpected: %+v", got)
 	}
-	if !strings.HasPrefix(f.got, "JSON.stringify((") {
+	if !strings.HasPrefix(f.got, prelude) || !strings.Contains(f.got, "\nJSON.stringify((") {
 		t.Fatalf("source not wrapped: %.60s", f.got)
 	}
 }
