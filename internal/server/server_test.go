@@ -102,3 +102,23 @@ func TestOtherReadToolsOverMCP(t *testing.T) {
 		}
 	}
 }
+
+// A client may send `arguments: null`; tools with schema defaults must not crash the server.
+func TestNullArgumentsDoNotPanic(t *testing.T) {
+	ctx := context.Background()
+	ct, st := mcp.NewInMemoryTransports()
+	b := &omni.Bridge{Runner: fakeRunner{`[]`}}
+	if _, err := New(b, "test").Connect(ctx, st, nil); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"list_tasks", "list_projects", "list_tags", "list_perspectives"} {
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: json.RawMessage("null")})
+		if err != nil || res.IsError {
+			t.Errorf("%s: err=%v res=%+v", tool, err, res)
+		}
+	}
+}
