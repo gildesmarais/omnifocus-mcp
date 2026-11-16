@@ -117,6 +117,10 @@ func TestLiveStructureWrites(t *testing.T) {
 	if g, _ := b.GetTag(ctx, childTag.ID); g.Status != "Active" || g.RemainingTasks != 1 {
 		t.Fatalf("refused drop must not change the tag: %+v", g)
 	}
+	refuse(drop("tag", parentTag.ID), "remaining") // task is tagged only with the child tag
+	if g, _ := b.GetTag(ctx, parentTag.ID); g.Status != "Active" {
+		t.Fatalf("refused parent drop must not change the tag: %+v", g)
+	}
 	if rs, err := b.EditTasks(ctx, []TaskEdit{{ID: taskID, Tags: &TagEdit{Remove: []string{childTag.ID}}}}); err != nil || !rs[0].OK {
 		t.Fatalf("untag: %+v %v", rs, err)
 	}

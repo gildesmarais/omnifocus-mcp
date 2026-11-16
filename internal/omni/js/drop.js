@@ -6,7 +6,10 @@
     else if (p.kind === "project") o.status = Project.Status.Dropped;
     else if (p.kind === "folder") o.status = Folder.Status.Dropped;
     else {
-      const n = o.remainingTasks.length;
+      // The tag and every descendant tag; tasks under child tags also block the drop.
+      const ids = new Set([o.id.primaryKey]);
+      flattenedTags.forEach(g => { if (inside(o, g)) ids.add(g.id.primaryKey); });
+      const n = new Set(flattenedTags.filter(g => ids.has(g.id.primaryKey)).flatMap(g => g.remainingTasks.map(t => t.id.primaryKey))).size;
       if (n > 0) throw new Error("tag still has " + n + " remaining task(s); untag or complete them first");
       o.status = Tag.Status.Dropped;
     }
