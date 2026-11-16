@@ -27,18 +27,18 @@ func TestStructAddValidation(t *testing.T) {
 		"project dropped": {Kind: "project", Name: "x", Status: "Dropped"},
 		"tag sequential":  {Kind: "tag", Name: "x", Sequential: true},
 	} {
-		if _, err := newStructAddItem(a); err == nil {
+		if _, err := validAdd(a); err == nil {
 			t.Errorf("%s: want error", name)
 		}
 	}
-	it, err := newStructAddItem(StructAdd{Kind: "project", Name: "p", Parent: "f1", Status: "OnHold", Sequential: true})
+	it, err := validAdd(StructAdd{Kind: "project", Name: "p", Parent: "f1", Status: "OnHold", Sequential: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := wire(t, it), `{"kind":"project","name":"p","parent":"f1","status":"OnHold","sequential":true}`; got != want {
 		t.Errorf("full add:\n got %s\nwant %s", got, want)
 	}
-	min, err := newStructAddItem(StructAdd{Kind: "tag", Name: "g"})
+	min, err := validAdd(StructAdd{Kind: "tag", Name: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestStructEditWire(t *testing.T) {
 		"reorder lead": {`{"kind":"folder","id":"a","reorder":{"before":"b"}}`, `{"kind":"folder","id":"a","reorder":{"before":"b"}}`},
 		"scalars":      {`{"kind":"project","id":"a","name":"N","sequential":false}`, `{"kind":"project","id":"a","name":"N","sequential":false}`},
 	} {
-		it, err := newStructEditItem(decodeStructEdit(t, tc.in))
+		it, err := validEdit(decodeStructEdit(t, tc.in))
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 			continue
@@ -67,7 +67,7 @@ func TestStructEditWire(t *testing.T) {
 }
 
 func TestStructRefWire(t *testing.T) {
-	it, err := newStructRefItem(StructRef{Kind: "task", ID: "a"})
+	it, err := validRef(StructRef{Kind: "task", ID: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}

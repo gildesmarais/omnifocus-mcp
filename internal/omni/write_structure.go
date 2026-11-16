@@ -109,7 +109,8 @@ func (p StructEdit) changesNothing() bool {
 	return reflect.ValueOf(p).IsZero()
 }
 
-func newStructAddItem(a StructAdd) (StructAdd, error) {
+// validAdd checks the add item and returns the validated input.
+func validAdd(a StructAdd) (StructAdd, error) {
 	if err := errors.Join(checkKind(a.Kind, kindProject, kindTag, kindFolder), nonEmpty("name", a.Name), checkStatus(a.Kind, a.Status)); err != nil {
 		return StructAdd{}, err
 	}
@@ -119,7 +120,8 @@ func newStructAddItem(a StructAdd) (StructAdd, error) {
 	return a, nil
 }
 
-func newStructEditItem(p StructEdit) (StructEdit, error) {
+// validEdit checks the edit item and returns the validated input.
+func validEdit(p StructEdit) (StructEdit, error) {
 	if err := errors.Join(checkKind(p.Kind, kindProject, kindTag, kindFolder), nonEmpty("id", p.ID), checkStatus(p.Kind, p.Status)); err != nil {
 		return StructEdit{}, err
 	}
@@ -158,7 +160,8 @@ func newStructEditItem(p StructEdit) (StructEdit, error) {
 	return p, nil
 }
 
-func newStructRefItem(r StructRef) (StructRef, error) {
+// validRef checks the ref item and returns the validated input.
+func validRef(r StructRef) (StructRef, error) {
 	if err := errors.Join(checkKind(r.Kind, kindTask, kindProject, kindTag, kindFolder), nonEmpty("id", r.ID)); err != nil {
 		return StructRef{}, err
 	}
@@ -170,7 +173,7 @@ func (b *Bridge) AddStructure(ctx context.Context, adds []StructAdd) ([]StructRe
 	if len(adds) == 0 {
 		return nil, errors.New("items: at least one item is required")
 	}
-	return runBatch(ctx, b, "add_structure", len(adds), nil, failStruct, func(i int) (StructAdd, error) { return newStructAddItem(adds[i]) })
+	return runBatch(ctx, b, scriptAddStructure, len(adds), nil, failStruct, func(i int) (StructAdd, error) { return validAdd(adds[i]) })
 }
 
 // EditStructure patches projects, tags and folders, with the same result contract as AddStructure.
@@ -182,22 +185,22 @@ func (b *Bridge) EditStructure(ctx context.Context, patches []StructEdit) ([]Str
 	for i, p := range patches {
 		ids[i] = p.ID
 	}
-	return runBatch(ctx, b, "edit_structure", len(patches), ids, failStruct, func(i int) (StructEdit, error) { return newStructEditItem(patches[i]) })
+	return runBatch(ctx, b, scriptEditStructure, len(patches), ids, failStruct, func(i int) (StructEdit, error) { return validEdit(patches[i]) })
 }
 
 // DropObjects drops tasks, projects, tags or folders. Guards (a tag with
 // remaining tasks) are enforced in the script, the only place that can see them.
 func (b *Bridge) DropObjects(ctx context.Context, refs []StructRef) ([]StructResult, error) {
-	return b.refBatch(ctx, "drop", refs)
+	return b.refBatch(ctx, scriptDrop, refs)
 }
 
 // DeleteObjects irreversibly deletes objects. Tags and folders must already be
 // dropped and empty; the script enforces that.
 func (b *Bridge) DeleteObjects(ctx context.Context, refs []StructRef) ([]StructResult, error) {
-	return b.refBatch(ctx, "delete", refs)
+	return b.refBatch(ctx, scriptDelete, refs)
 }
 
-func (b *Bridge) refBatch(ctx context.Context, script string, refs []StructRef) ([]StructResult, error) {
+func (b *Bridge) refBatch(ctx context.Context, s script, refs []StructRef) ([]StructResult, error) {
 	if len(refs) == 0 {
 		return nil, errors.New("items: at least one item is required")
 	}
@@ -205,5 +208,5 @@ func (b *Bridge) refBatch(ctx context.Context, script string, refs []StructRef) 
 	for i, r := range refs {
 		ids[i] = r.ID
 	}
-	return runBatch(ctx, b, script, len(refs), ids, failStruct, func(i int) (StructRef, error) { return newStructRefItem(refs[i]) })
+	return runBatch(ctx, b, s, len(refs), ids, failStruct, func(i int) (StructRef, error) { return validRef(refs[i]) })
 }

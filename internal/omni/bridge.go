@@ -35,11 +35,33 @@ const (
 	DefaultWriteTimeout = 120 * time.Second
 )
 
-// writeScripts are the scripts that mutate OmniFocus.
-var writeScripts = map[string]bool{
-	"add_tasks": true, "edit_tasks": true,
-	"add_structure": true, "edit_structure": true,
-	"drop": true, "delete": true,
+// script identifies one embedded js/<name>.js and owns whether it mutates OmniFocus.
+type script struct {
+	name  string
+	write bool
+}
+
+var (
+	scriptListPerspectives = script{name: "list_perspectives"}
+	scriptTasks            = script{name: "tasks"}
+	scriptProjects         = script{name: "projects"}
+	scriptTags             = script{name: "tags"}
+	scriptFolders          = script{name: "folders"}
+	scriptAddTasks         = script{name: "add_tasks", write: true}
+	scriptEditTasks        = script{name: "edit_tasks", write: true}
+	scriptAddStructure     = script{name: "add_structure", write: true}
+	scriptEditStructure    = script{name: "edit_structure", write: true}
+	scriptDrop             = script{name: "drop", write: true}
+	scriptDelete           = script{name: "delete", write: true}
+)
+
+// body returns the embedded source of the script.
+func (s script) body() (string, error) {
+	b, err := scripts.ReadFile("js/" + s.name + ".js")
+	if err != nil {
+		return "", fmt.Errorf("unknown script %q: %w", s.name, err)
+	}
+	return string(b), nil
 }
 
 // Runner executes a complete Omni Automation source in OmniFocus and returns
@@ -62,9 +84,9 @@ type Bridge struct {
 	WriteTimeout time.Duration // writes; zero means DefaultWriteTimeout
 }
 
-func (b *Bridge) timeoutFor(script string) time.Duration {
+func (b *Bridge) timeoutFor(s script) time.Duration {
 	t, def := b.Timeout, DefaultTimeout
-	if writeScripts[script] {
+	if s.write {
 		t, def = b.WriteTimeout, DefaultWriteTimeout
 	}
 	if t == 0 {
@@ -76,28 +98,28 @@ func (b *Bridge) timeoutFor(script string) time.Duration {
 // New returns a Bridge backed by /usr/bin/osascript.
 func New() *Bridge { return &Bridge{Runner: OsascriptRunner{}} }
 
-// Call runs js/<script>.js with args and decodes the JSON result into out.
-// The script file must be a function expression taking one argument (args).
-func (b *Bridge) Call(ctx context.Context, script string, args, out any) error {
-	body, err := scripts.ReadFile("js/" + script + ".js")
-	if err != nil {
-		return fmt.Errorf("unknown script %q: %w", script, err)
-	}
-	src, err := compose(string(body), args)
+// Call runs the script's js file with args and decodes the JSON result into out.
+// The file must be a function expression taking one argument (args).
+func (b *Bridge) Call(ctx context.Context, s script, args, out any) error {
+	body, err := s.body()
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, b.timeoutFor(script))
+	src, err := compose(body, args)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, b.timeoutFor(s))
 	defer cancel()
 	res, err := b.Runner.Run(ctx, src)
 	if err != nil {
-		if writeScripts[script] && ctx.Err() != nil {
-			return fmt.Errorf("%s: %w (the batch may have partially applied in OmniFocus; re-list before retrying)", script, err)
+		if s.write && ctx.Err() != nil {
+			return fmt.Errorf("%s: %w (the batch may have partially applied in OmniFocus; re-list before retrying)", s.name, err)
 		}
-		return fmt.Errorf("%s: %w", script, err)
+		return fmt.Errorf("%s: %w", s.name, err)
 	}
 	if err := json.Unmarshal([]byte(res), out); err != nil {
-		return fmt.Errorf("%s: decode result: %w", script, err)
+		return fmt.Errorf("%s: decode result: %w", s.name, err)
 	}
 	return nil
 }

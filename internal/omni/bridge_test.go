@@ -73,7 +73,7 @@ func TestBadJSONResult(t *testing.T) {
 }
 
 func TestUnknownScript(t *testing.T) {
-	if err := (&Bridge{Runner: &fake{}}).Call(context.Background(), "nope", nil, new(any)); err == nil {
+	if err := (&Bridge{Runner: &fake{}}).Call(context.Background(), script{name: "nope"}, nil, new(any)); err == nil {
 		t.Fatal("want error")
 	}
 }
@@ -120,8 +120,14 @@ func TestMarshalEscapesLineSeparators(t *testing.T) {
 
 func TestWriteTimeoutLongerAndWarnsOfPartialApply(t *testing.T) {
 	b := &Bridge{Runner: slow{}}
-	if b.timeoutFor("add_tasks") != DefaultWriteTimeout || b.timeoutFor("delete") != DefaultWriteTimeout || b.timeoutFor("tasks") != DefaultTimeout {
-		t.Fatal("write scripts need the longer default timeout")
+	for _, s := range allScripts {
+		want := DefaultTimeout
+		if s.write {
+			want = DefaultWriteTimeout
+		}
+		if got := b.timeoutFor(s); got != want {
+			t.Fatalf("%s: timeout %v, want %v", s.name, got, want)
+		}
 	}
 	if DefaultWriteTimeout < 120*time.Second {
 		t.Fatal("write timeout too short")
@@ -147,5 +153,18 @@ func TestOsascriptSourceTravelsOnStdinNotArgv(t *testing.T) {
 	got, err := io.ReadAll(cmd.Stdin)
 	if err != nil || string(got) != "SECRET-HOUSEHOLD-DATA" {
 		t.Fatalf("stdin = %q %v", got, err)
+	}
+}
+
+var allScripts = []script{
+	scriptListPerspectives, scriptTasks, scriptProjects, scriptTags, scriptFolders,
+	scriptAddTasks, scriptEditTasks, scriptAddStructure, scriptEditStructure, scriptDrop, scriptDelete,
+}
+
+func TestEveryScriptFileExists(t *testing.T) {
+	for _, s := range allScripts {
+		if _, err := s.body(); err != nil {
+			t.Errorf("%s: %v", s.name, err)
+		}
 	}
 }

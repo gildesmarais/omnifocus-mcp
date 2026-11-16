@@ -252,7 +252,7 @@ func (b *Bridge) AddTasks(ctx context.Context, adds []TaskAdd) ([]TaskResult, er
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, "add_tasks", len(adds), nil, failTask, func(i int) (addItem, error) { return newAddItem(adds[i], tags) })
+	return runBatch(ctx, b, scriptAddTasks, len(adds), nil, failTask, func(i int) (addItem, error) { return newAddItem(adds[i], tags) })
 }
 
 // EditTasks applies patches in one script call, with the same result contract as AddTasks.
@@ -270,7 +270,7 @@ func (b *Bridge) EditTasks(ctx context.Context, patches []TaskEdit) ([]TaskResul
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, "edit_tasks", len(patches), ids, failTask, func(i int) (patchItem, error) { return newPatchItem(patches[i], tags) })
+	return runBatch(ctx, b, scriptEditTasks, len(patches), ids, failTask, func(i int) (patchItem, error) { return newPatchItem(patches[i], tags) })
 }
 
 func failTask(id, msg string) TaskResult { return TaskResult{ID: id, Error: msg} }
@@ -286,7 +286,7 @@ func (b *Bridge) tagsIf(ctx context.Context, need bool) ([]Tag, error) {
 // runBatch validates every item, sends the valid ones in a single script call
 // and merges script results back into input order. ids (optional) label
 // results whose item failed validation.
-func runBatch[I, R any](ctx context.Context, b *Bridge, script string, n int, ids []string, fail func(id, msg string) R, build func(int) (I, error)) ([]R, error) {
+func runBatch[I, R any](ctx context.Context, b *Bridge, s script, n int, ids []string, fail func(id, msg string) R, build func(int) (I, error)) ([]R, error) {
 	results := make([]R, n)
 	var items []I
 	var slots []int
@@ -306,13 +306,13 @@ func runBatch[I, R any](ctx context.Context, b *Bridge, script string, n int, id
 		return results, nil
 	}
 	var got []R
-	if err := b.Call(ctx, script, struct {
+	if err := b.Call(ctx, s, struct {
 		Items []I `json:"items"`
 	}{items}, &got); err != nil {
 		return nil, err
 	}
 	if len(got) != len(items) {
-		return nil, fmt.Errorf("%s: script returned %d results for %d items", script, len(got), len(items))
+		return nil, fmt.Errorf("%s: script returned %d results for %d items", s.name, len(got), len(items))
 	}
 	for j, r := range got {
 		results[slots[j]] = r

@@ -138,7 +138,7 @@ func (b *Bridge) ListTasks(ctx context.Context, f TaskFilter) ([]Task, error) {
 		return nil, errors.New("inbox: cannot be combined with project (inbox tasks belong to no project)")
 	}
 	var out []Task
-	if err := b.Call(ctx, "tasks", f, &out); err != nil {
+	if err := b.Call(ctx, scriptTasks, f, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -146,7 +146,7 @@ func (b *Bridge) ListTasks(ctx context.Context, f TaskFilter) ([]Task, error) {
 
 // GetTask returns one task or ErrNotFound.
 func (b *Bridge) GetTask(ctx context.Context, id string) (Task, error) {
-	return getOne[Task](ctx, b, "tasks", "task", id)
+	return getOne[Task](ctx, b, scriptTasks, "task", id)
 }
 
 // ListProjects returns projects matching f.
@@ -158,7 +158,7 @@ func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, 
 		return nil, err
 	}
 	var out []Project
-	if err := b.Call(ctx, "projects", f, &out); err != nil {
+	if err := b.Call(ctx, scriptProjects, f, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -166,13 +166,13 @@ func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, 
 
 // GetProject returns one project or ErrNotFound.
 func (b *Bridge) GetProject(ctx context.Context, id string) (Project, error) {
-	return getOne[Project](ctx, b, "projects", "project", id)
+	return getOne[Project](ctx, b, scriptProjects, "project", id)
 }
 
 // ListTags returns all tags.
 func (b *Bridge) ListTags(ctx context.Context) ([]Tag, error) {
 	var out []Tag
-	if err := b.Call(ctx, "tags", nil, &out); err != nil {
+	if err := b.Call(ctx, scriptTags, nil, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -180,13 +180,13 @@ func (b *Bridge) ListTags(ctx context.Context) ([]Tag, error) {
 
 // GetTag returns one tag or ErrNotFound.
 func (b *Bridge) GetTag(ctx context.Context, id string) (Tag, error) {
-	return getOne[Tag](ctx, b, "tags", "tag", id)
+	return getOne[Tag](ctx, b, scriptTags, "tag", id)
 }
 
 // ListFolders returns all folders.
 func (b *Bridge) ListFolders(ctx context.Context) ([]Folder, error) {
 	var out []Folder
-	if err := b.Call(ctx, "folders", nil, &out); err != nil {
+	if err := b.Call(ctx, scriptFolders, nil, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -194,21 +194,37 @@ func (b *Bridge) ListFolders(ctx context.Context) ([]Folder, error) {
 
 // GetFolder returns one folder or ErrNotFound.
 func (b *Bridge) GetFolder(ctx context.Context, id string) (Folder, error) {
-	return getOne[Folder](ctx, b, "folders", "folder", id)
+	return getOne[Folder](ctx, b, scriptFolders, "folder", id)
 }
 
 // getOne runs a read script with {id} and unwraps its 0-or-1 element result.
-func getOne[T any](ctx context.Context, b *Bridge, script, kind, id string) (T, error) {
+func getOne[T any](ctx context.Context, b *Bridge, s script, kind, id string) (T, error) {
 	var zero T
 	if id == "" {
 		return zero, fmt.Errorf("%s id is required", kind)
 	}
 	var out []T
-	if err := b.Call(ctx, script, map[string]string{"id": id}, &out); err != nil {
+	if err := b.Call(ctx, s, map[string]string{"id": id}, &out); err != nil {
 		return zero, err
 	}
 	if len(out) == 0 {
 		return zero, fmt.Errorf("%s %q: %w", kind, id, ErrNotFound)
 	}
 	return out[0], nil
+}
+
+// Perspective is a built-in (nil ID) or custom OmniFocus perspective.
+type Perspective struct {
+	ID      *string `json:"id"`
+	Name    string  `json:"name"`
+	Builtin bool    `json:"builtin"`
+}
+
+// Perspectives lists built-in and custom perspectives.
+func (b *Bridge) Perspectives(ctx context.Context) ([]Perspective, error) {
+	var out []Perspective
+	if err := b.Call(ctx, scriptListPerspectives, nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
