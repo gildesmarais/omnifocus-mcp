@@ -46,7 +46,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "drop",
-		Description: "Drop tasks, projects, tags or folders Reversible through this server only for projects and tags (edit status back to Active); a dropped folder (which also drops its projects) or task cannot be restored through these tools. Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
+		Description: "Drop tasks, projects, tags or folders. Reversible through this server only for projects and tags (edit status back to Active); a dropped folder (which also drops its projects) or task cannot be restored through these tools. Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
 		Annotations: destructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in refsIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.DropObjects(ctx, in.Items)
