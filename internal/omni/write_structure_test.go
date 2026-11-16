@@ -134,3 +134,32 @@ func TestAddStructureDecodesRecord(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
+
+func TestEditStructureDecodesRecord(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"a","kind":"tag","ok":true,"name":"T","status":"OnHold"}]`}
+	got, err := (&Bridge{Runner: r}).EditStructure(context.Background(), []StructEdit{
+		decodeStructEdit(t, `{"kind":"tag","id":"a","status":"OnHold","reorder":{"after":"b"}}`),
+	})
+	if err != nil || len(got) != 1 || !got[0].OK || got[0].Name != "T" || got[0].Status != "OnHold" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	for _, want := range []string{`\"reorder\":{\"after\":\"b\"}`, `\"status\":\"OnHold\"`} {
+		if !strings.Contains(r.src, want) {
+			t.Errorf("payload lacks %s: %s", want, r.src)
+		}
+	}
+}
+
+func TestDeleteObjectsMergesScriptAndLocalResults(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"a","kind":"tag","ok":true,"name":"T"},{"id":"c","kind":"project","ok":false,"error":"project has 2 remaining task(s)"}]`}
+	got, err := (&Bridge{Runner: r}).DeleteObjects(context.Background(), []StructRef{{Kind: "tag", ID: "a"}, {Kind: "bogus", ID: "b"}, {Kind: "project", ID: "c"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].ID != "a" || !got[0].OK || got[1].ID != "b" || got[1].OK || got[2].ID != "c" || got[2].OK || !strings.Contains(got[2].Error, "remaining") {
+		t.Fatalf("%+v", got)
+	}
+	if strings.Contains(r.src, "bogus") {
+		t.Error("invalid item reached the script")
+	}
+}
