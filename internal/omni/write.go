@@ -290,7 +290,7 @@ func runBatch[I, R any](ctx context.Context, b *Bridge, s script, n int, ids []s
 	results := make([]R, n)
 	var items []I
 	var slots []int
-	for i := 0; i < n; i++ {
+	for i := range n {
 		it, err := build(i)
 		if err != nil {
 			id := ""
