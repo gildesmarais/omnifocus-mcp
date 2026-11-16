@@ -120,10 +120,14 @@ func TestMarshalEscapesLineSeparators(t *testing.T) {
 
 func TestWriteTimeoutLongerAndWarnsOfPartialApply(t *testing.T) {
 	b := &Bridge{Runner: slow{}}
+	writes := map[string]bool{"add_tasks": true, "edit_tasks": true, "add_structure": true, "edit_structure": true, "drop": true, "delete": true}
 	for _, s := range allScripts {
 		want := DefaultTimeout
-		if s.write {
+		if writes[s.name] {
 			want = DefaultWriteTimeout
+		}
+		if s.write != writes[s.name] {
+			t.Fatalf("%s: write flag %v, want %v", s.name, s.write, writes[s.name])
 		}
 		if got := b.timeoutFor(s); got != want {
 			t.Fatalf("%s: timeout %v, want %v", s.name, got, want)
@@ -162,9 +166,34 @@ var allScripts = []script{
 }
 
 func TestEveryScriptFileExists(t *testing.T) {
+	names := map[string]bool{}
 	for _, s := range allScripts {
+		if names[s.name] {
+			t.Errorf("duplicate script %q in allScripts", s.name)
+		}
+		names[s.name] = true
 		if _, err := s.body(); err != nil {
 			t.Errorf("%s: %v", s.name, err)
+		}
+	}
+	entries, err := scripts.ReadDir("js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]bool{}
+	for _, e := range entries {
+		n := strings.TrimSuffix(e.Name(), ".js")
+		if n == "prelude" {
+			continue
+		}
+		files[n] = true
+		if !names[n] {
+			t.Errorf("js/%s has no script value in allScripts", e.Name())
+		}
+	}
+	for n := range names {
+		if !files[n] {
+			t.Errorf("script %q has no js file", n)
 		}
 	}
 }
