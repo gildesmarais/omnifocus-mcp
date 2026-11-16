@@ -98,9 +98,9 @@ func (b *Bridge) timeoutFor(s script) time.Duration {
 // New returns a Bridge backed by /usr/bin/osascript.
 func New() *Bridge { return &Bridge{Runner: OsascriptRunner{}} }
 
-// Call runs the script's js file with args and decodes the JSON result into out.
+// call runs the script's js file with args and decodes the JSON result into out.
 // The file must be a function expression taking one argument (args).
-func (b *Bridge) Call(ctx context.Context, s script, args, out any) error {
+func (b *Bridge) call(ctx context.Context, s script, args, out any) error {
 	body, err := s.body()
 	if err != nil {
 		return err

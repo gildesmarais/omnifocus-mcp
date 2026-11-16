@@ -73,7 +73,7 @@ func TestBadJSONResult(t *testing.T) {
 }
 
 func TestUnknownScript(t *testing.T) {
-	if err := (&Bridge{Runner: &fake{}}).Call(context.Background(), script{name: "nope"}, nil, new(any)); err == nil {
+	if err := (&Bridge{Runner: &fake{}}).call(context.Background(), script{name: "nope"}, nil, new(any)); err == nil {
 		t.Fatal("want error")
 	}
 }

@@ -72,6 +72,6 @@ Items `{kind: task|project|tag|folder, id}`; same result shape. Guards run in th
 
 ## Architecture
 
-- `internal/omni`: `Bridge.Call(ctx, script, args, &out)` composes `JSON.stringify((<js/script.js>)(JSON.parse(<json string literal>)))`, runs it through the `Runner` interface, decodes JSON. Per-call context timeout: 30 s for reads, 120 s for writes. The script travels on osascript's stdin, not argv. A write that times out may still finish (or partly apply) in OmniFocus after osascript is killed: the error says so; re-list before retrying. Errors distinguish OmniFocus not running and missing Automation permission.
+- `internal/omni`: every tool method goes through one unexported `Bridge.call(ctx, script, args, &out)`, which composes `JSON.stringify((<js/script.js>)(JSON.parse(<json string literal>)))`, runs it through the `Runner` interface, decodes JSON. Per-call context timeout: 30 s for reads, 120 s for writes. The script travels on osascript's stdin, not argv. A write that times out may still finish (or partly apply) in OmniFocus after osascript is killed: the error says so; re-list before retrying. Errors distinguish OmniFocus not running and missing Automation permission.
 - `internal/server`: tool registration and input/output types.
 - Tests fake `Runner`; `make live` (`-tags live`) runs read-only checks against the real app.

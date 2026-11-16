@@ -306,7 +306,7 @@ func runBatch[I, R any](ctx context.Context, b *Bridge, s script, n int, ids []s
 		return results, nil
 	}
 	var got []R
-	if err := b.Call(ctx, s, struct {
+	if err := b.call(ctx, s, struct {
 		Items []I `json:"items"`
 	}{items}, &got); err != nil {
 		return nil, err

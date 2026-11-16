@@ -138,7 +138,7 @@ func (b *Bridge) ListTasks(ctx context.Context, f TaskFilter) ([]Task, error) {
 		return nil, errors.New("inbox: cannot be combined with project (inbox tasks belong to no project)")
 	}
 	var out []Task
-	if err := b.Call(ctx, scriptTasks, f, &out); err != nil {
+	if err := b.call(ctx, scriptTasks, f, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -158,7 +158,7 @@ func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, 
 		return nil, err
 	}
 	var out []Project
-	if err := b.Call(ctx, scriptProjects, f, &out); err != nil {
+	if err := b.call(ctx, scriptProjects, f, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -172,7 +172,7 @@ func (b *Bridge) GetProject(ctx context.Context, id string) (Project, error) {
 // ListTags returns all tags.
 func (b *Bridge) ListTags(ctx context.Context) ([]Tag, error) {
 	var out []Tag
-	if err := b.Call(ctx, scriptTags, nil, &out); err != nil {
+	if err := b.call(ctx, scriptTags, nil, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -186,7 +186,7 @@ func (b *Bridge) GetTag(ctx context.Context, id string) (Tag, error) {
 // ListFolders returns all folders.
 func (b *Bridge) ListFolders(ctx context.Context) ([]Folder, error) {
 	var out []Folder
-	if err := b.Call(ctx, scriptFolders, nil, &out); err != nil {
+	if err := b.call(ctx, scriptFolders, nil, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -204,7 +204,7 @@ func getOne[T any](ctx context.Context, b *Bridge, s script, kind, id string) (T
 		return zero, fmt.Errorf("%s id is required", kind)
 	}
 	var out []T
-	if err := b.Call(ctx, s, map[string]string{"id": id}, &out); err != nil {
+	if err := b.call(ctx, s, map[string]string{"id": id}, &out); err != nil {
 		return zero, err
 	}
 	if len(out) == 0 {
@@ -223,7 +223,7 @@ type Perspective struct {
 // Perspectives lists built-in and custom perspectives.
 func (b *Bridge) Perspectives(ctx context.Context) ([]Perspective, error) {
 	var out []Perspective
-	if err := b.Call(ctx, scriptListPerspectives, nil, &out); err != nil {
+	if err := b.call(ctx, scriptListPerspectives, nil, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
