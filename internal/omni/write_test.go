@@ -18,20 +18,81 @@ func decodeEdit(t *testing.T, s string) TaskEdit {
 
 var testTags = []Tag{{ID: "t1", Name: "home"}, {ID: "t2", Name: "work"}, {ID: "t3", Name: "dup"}, {ID: "t4", Name: "dup"}}
 
-func TestPatchNullVersusOmitted(t *testing.T) {
-	it, err := newPatchItem(decodeEdit(t, `{"id":"a","defer":null,"due":"2026-11-20","note":null}`), nil)
+// wire returns the JSON a payload sends to its script: the contract with js/*.js.
+func wire(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(it)
-	got := string(raw)
-	for _, want := range []string{`"defer":null`, `"note":null`, `"due":"2026-11-20"`} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %s in %s", want, got)
+	return string(raw)
+}
+
+func TestAddItemWire(t *testing.T) {
+	full, err := newAddItem(TaskAdd{Name: "n", Note: "x", Flagged: true, Defer: "2026-11-19", Due: "2026-11-20", Planned: "2026-11-21", Project: "p", Tags: []string{"home", "t2"}}, testTags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := wire(t, full), `{"name":"n","note":"x","flagged":true,"defer":"2026-11-19","due":"2026-11-20","planned":"2026-11-21","project":"p","tags":["t1","t2"]}`; got != want {
+		t.Errorf("full add:\n got %s\nwant %s", got, want)
+	}
+	min, err := newAddItem(TaskAdd{Name: "n"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := wire(t, min), `{"name":"n"}`; got != want {
+		t.Errorf("minimal add: got %s want %s", got, want)
+	}
+	sub, err := newAddItem(TaskAdd{Name: "n", Parent: "q"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := wire(t, sub), `{"name":"n","parent":"q"}`; got != want {
+		t.Errorf("subtask add: got %s want %s", got, want)
+	}
+}
+
+func TestPatchItemWire(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"set and clear": {`{"id":"a","defer":null,"due":"2026-11-20","note":null}`, `{"id":"a","note":null,"defer":null,"due":"2026-11-20"}`},
+		"note set":      {`{"id":"a","note":"hi"}`, `{"id":"a","note":"hi"}`},
+		"note empty":    {`{"id":"a","note":""}`, `{"id":"a","note":""}`},
+		"planned clear": {`{"id":"a","planned":null}`, `{"id":"a","planned":null}`},
+		"scalars":       {`{"id":"a","name":"N","flagged":false,"complete":true}`, `{"id":"a","name":"N","flagged":false,"complete":true}`},
+		"uncomplete":    {`{"id":"a","uncomplete":true}`, `{"id":"a","uncomplete":true}`},
+		"tags":          {`{"id":"a","tags":{"add":["home","t2"],"remove":["t3"]}}`, `{"id":"a","tagsAdd":["t1","t2"],"tagsRemove":["t3"]}`},
+		"tags add only": {`{"id":"a","tags":{"add":["home"]}}`, `{"id":"a","tagsAdd":["t1"]}`},
+		"move inbox":    {`{"id":"a","move":{"inbox":true}}`, `{"id":"a","move":{"inbox":true}}`},
+		"move project":  {`{"id":"a","move":{"project":"p"}}`, `{"id":"a","move":{"project":"p"}}`},
+		"move parent":   {`{"id":"a","move":{"parent":"q"}}`, `{"id":"a","move":{"parent":"q"}}`},
+	} {
+		it, err := newPatchItem(decodeEdit(t, tc.in), testTags)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if got := wire(t, it); got != tc.want {
+			t.Errorf("%s:\n got %s\nwant %s", name, got, tc.want)
 		}
 	}
-	if strings.Contains(got, "planned") || strings.Contains(got, "name") {
-		t.Errorf("omitted fields must stay out: %s", got)
+}
+
+func TestNullableStringWire(t *testing.T) {
+	if got := wire(t, NullableString{Set: true, Null: true}); got != "null" {
+		t.Errorf("clear: %s", got)
+	}
+	if got := wire(t, NullableString{Set: true, Value: "x"}); got != `"x"` {
+		t.Errorf("value: %s", got)
+	}
+	if !(NullableString{}).IsZero() || (NullableString{Set: true, Null: true}).IsZero() {
+		t.Error("IsZero must mean unset")
+	}
+}
+
+func TestPatchEmptyTagEditChangesNothing(t *testing.T) {
+	// Tags given but empty change nothing.
+	if _, err := newPatchItem(decodeEdit(t, `{"id":"a","tags":{}}`), nil); err == nil {
+		t.Fatal("empty tag edit must change nothing")
 	}
 }
 
@@ -58,7 +119,7 @@ func TestPatchValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ids := it["tagsAdd"].([]string); len(ids) != 2 || ids[0] != "t1" || ids[1] != "t2" {
+	if ids := it.TagsAdd; len(ids) != 2 || ids[0] != "t1" || ids[1] != "t2" {
 		t.Errorf("tags not resolved to ids: %v", ids)
 	}
 }

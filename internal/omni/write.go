@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -13,6 +14,17 @@ import (
 type NullableString struct {
 	Set, Null bool
 	Value     string
+}
+
+// IsZero reports an omitted field, so `omitzero` leaves it out of the payload.
+func (n NullableString) IsZero() bool { return !n.Set }
+
+// MarshalJSON emits null for an explicit clear, the string otherwise.
+func (n NullableString) MarshalJSON() ([]byte, error) {
+	if n.Null || !n.Set {
+		return []byte("null"), nil
+	}
+	return json.Marshal(n.Value)
 }
 
 // UnmarshalJSON implements json.Unmarshaler; it only runs for present fields.
@@ -76,8 +88,42 @@ type TaskResult struct {
 	Task  *Task  `json:"task,omitempty"`
 }
 
-// writeItem is a validated item in script form: only the keys the script acts on.
-type writeItem map[string]any
+// addItem is a validated add_tasks item in script form: the keys add_tasks.js
+// reads, with tags resolved to ids.
+type addItem struct {
+	Name    string   `json:"name"`
+	Note    string   `json:"note,omitempty"`
+	Flagged bool     `json:"flagged,omitempty"`
+	Defer   string   `json:"defer,omitempty"`
+	Due     string   `json:"due,omitempty"`
+	Planned string   `json:"planned,omitempty"`
+	Project string   `json:"project,omitempty"`
+	Parent  string   `json:"parent,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// patchItem is a validated edit_tasks patch in script form. Unset clearable
+// fields are omitted and cleared ones are null; the script tells them apart by key presence.
+type patchItem struct {
+	ID         string         `json:"id"`
+	Name       *string        `json:"name,omitempty"`
+	Note       NullableString `json:"note,omitzero"`
+	Flagged    *bool          `json:"flagged,omitempty"`
+	Defer      NullableString `json:"defer,omitzero"`
+	Due        NullableString `json:"due,omitzero"`
+	Planned    NullableString `json:"planned,omitzero"`
+	Complete   bool           `json:"complete,omitempty"`
+	Uncomplete bool           `json:"uncomplete,omitempty"`
+	Move       *Move          `json:"move,omitempty"`
+	TagsAdd    []string       `json:"tagsAdd,omitempty"`
+	TagsRemove []string       `json:"tagsRemove,omitempty"`
+}
+
+// changesNothing reports a patch that sets no field besides its id.
+func (p patchItem) changesNothing() bool {
+	p.ID = ""
+	return reflect.ValueOf(p).IsZero()
+}
 
 func nonEmpty(field, s string) error {
 	if strings.TrimSpace(s) == "" {
@@ -113,80 +159,44 @@ func resolveTags(refs []string, tags []Tag) ([]string, error) {
 }
 
 // newAddItem validates a and returns its script form.
-func newAddItem(a TaskAdd, tags []Tag) (writeItem, error) {
+func newAddItem(a TaskAdd, tags []Tag) (addItem, error) {
 	if err := errors.Join(nonEmpty("name", a.Name), checkDate("defer", a.Defer), checkDate("due", a.Due), checkDate("planned", a.Planned)); err != nil {
-		return nil, err
+		return addItem{}, err
 	}
 	if a.Project != "" && a.Parent != "" {
-		return nil, errors.New("project and parent are mutually exclusive")
+		return addItem{}, errors.New("project and parent are mutually exclusive")
 	}
 	ids, err := resolveTags(a.Tags, tags)
 	if err != nil {
-		return nil, err
+		return addItem{}, err
 	}
-	it := writeItem{"name": a.Name}
-	for k, v := range map[string]string{"note": a.Note, "defer": a.Defer, "due": a.Due, "planned": a.Planned, "project": a.Project, "parent": a.Parent} {
-		if v != "" {
-			it[k] = v
-		}
-	}
-	if a.Flagged {
-		it["flagged"] = true
-	}
-	if len(ids) > 0 {
-		it["tags"] = ids
-	}
-	return it, nil
+	return addItem{Name: a.Name, Note: a.Note, Flagged: a.Flagged, Defer: a.Defer, Due: a.Due, Planned: a.Planned, Project: a.Project, Parent: a.Parent, Tags: ids}, nil
 }
 
-// editDate validates one clearable date patch and records it in it.
-func editDate(it writeItem, key string, n NullableString) error {
-	switch {
-	case !n.Set:
+// checkEditDate validates one clearable date patch; unset and null pass.
+func checkEditDate(key string, n NullableString) error {
+	if !n.Set || n.Null {
 		return nil
-	case n.Null:
-		it[key] = nil
-		return nil
-	case n.Value == "":
+	}
+	if n.Value == "" {
 		return fmt.Errorf("%s: empty date; use null to clear", key)
 	}
-	if err := checkDate(key, n.Value); err != nil {
-		return err
-	}
-	it[key] = n.Value
-	return nil
+	return checkDate(key, n.Value)
 }
 
 // newPatchItem validates p and returns its script form. Nothing reaches a
 // script unless every rule holds.
-func newPatchItem(p TaskEdit, tags []Tag) (writeItem, error) {
+func newPatchItem(p TaskEdit, tags []Tag) (patchItem, error) {
 	if err := nonEmpty("id", p.ID); err != nil {
-		return nil, err
+		return patchItem{}, err
 	}
-	it := writeItem{"id": p.ID}
-	errs := []error{editDate(it, "defer", p.Defer), editDate(it, "due", p.Due), editDate(it, "planned", p.Planned)}
+	it := patchItem{ID: p.ID, Name: p.Name, Note: p.Note, Flagged: p.Flagged, Defer: p.Defer, Due: p.Due, Planned: p.Planned, Complete: p.Complete, Uncomplete: p.Uncomplete}
+	errs := []error{checkEditDate("defer", p.Defer), checkEditDate("due", p.Due), checkEditDate("planned", p.Planned)}
 	if p.Name != nil {
 		errs = append(errs, nonEmpty("name", *p.Name))
-		it["name"] = *p.Name
-	}
-	if p.Note.Set {
-		if p.Note.Null {
-			it["note"] = nil
-		} else {
-			it["note"] = p.Note.Value
-		}
-	}
-	if p.Flagged != nil {
-		it["flagged"] = *p.Flagged
 	}
 	if p.Complete && p.Uncomplete {
 		errs = append(errs, errors.New("complete and uncomplete are mutually exclusive"))
-	}
-	if p.Complete {
-		it["complete"] = true
-	}
-	if p.Uncomplete {
-		it["uncomplete"] = true
 	}
 	if m := p.Move; m != nil {
 		n := 0
@@ -198,7 +208,7 @@ func newPatchItem(p TaskEdit, tags []Tag) (writeItem, error) {
 		if n != 1 {
 			errs = append(errs, errors.New("move: exactly one of project, inbox or parent"))
 		} else {
-			it["move"] = m
+			it.Move = m
 		}
 	}
 	if p.Tags != nil {
@@ -213,17 +223,17 @@ func newPatchItem(p TaskEdit, tags []Tag) (writeItem, error) {
 			}
 		}
 		if len(add) > 0 {
-			it["tagsAdd"] = add
+			it.TagsAdd = add
 		}
 		if len(rem) > 0 {
-			it["tagsRemove"] = rem
+			it.TagsRemove = rem
 		}
 	}
 	if err := errors.Join(errs...); err != nil {
-		return nil, err
+		return patchItem{}, err
 	}
-	if len(it) == 1 {
-		return nil, errors.New("patch changes nothing")
+	if it.changesNothing() {
+		return patchItem{}, errors.New("patch changes nothing")
 	}
 	return it, nil
 }
@@ -242,7 +252,7 @@ func (b *Bridge) AddTasks(ctx context.Context, adds []TaskAdd) ([]TaskResult, er
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, "add_tasks", len(adds), nil, failTask, func(i int) (writeItem, error) { return newAddItem(adds[i], tags) })
+	return runBatch(ctx, b, "add_tasks", len(adds), nil, failTask, func(i int) (addItem, error) { return newAddItem(adds[i], tags) })
 }
 
 // EditTasks applies patches in one script call, with the same result contract as AddTasks.
@@ -260,7 +270,7 @@ func (b *Bridge) EditTasks(ctx context.Context, patches []TaskEdit) ([]TaskResul
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, "edit_tasks", len(patches), ids, failTask, func(i int) (writeItem, error) { return newPatchItem(patches[i], tags) })
+	return runBatch(ctx, b, "edit_tasks", len(patches), ids, failTask, func(i int) (patchItem, error) { return newPatchItem(patches[i], tags) })
 }
 
 func failTask(id, msg string) TaskResult { return TaskResult{ID: id, Error: msg} }
@@ -276,9 +286,9 @@ func (b *Bridge) tagsIf(ctx context.Context, need bool) ([]Tag, error) {
 // runBatch validates every item, sends the valid ones in a single script call
 // and merges script results back into input order. ids (optional) label
 // results whose item failed validation.
-func runBatch[R any](ctx context.Context, b *Bridge, script string, n int, ids []string, fail func(id, msg string) R, build func(int) (writeItem, error)) ([]R, error) {
+func runBatch[I, R any](ctx context.Context, b *Bridge, script string, n int, ids []string, fail func(id, msg string) R, build func(int) (I, error)) ([]R, error) {
 	results := make([]R, n)
-	var items []writeItem
+	var items []I
 	var slots []int
 	for i := 0; i < n; i++ {
 		it, err := build(i)
@@ -296,7 +306,9 @@ func runBatch[R any](ctx context.Context, b *Bridge, script string, n int, ids [
 		return results, nil
 	}
 	var got []R
-	if err := b.Call(ctx, script, map[string]any{"items": items}, &got); err != nil {
+	if err := b.Call(ctx, script, struct {
+		Items []I `json:"items"`
+	}{items}, &got); err != nil {
 		return nil, err
 	}
 	if len(got) != len(items) {

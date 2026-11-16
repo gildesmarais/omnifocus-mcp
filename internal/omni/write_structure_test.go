@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 func decodeStructEdit(t *testing.T, s string) StructEdit {
@@ -30,40 +32,67 @@ func TestStructAddValidation(t *testing.T) {
 		}
 	}
 	it, err := newStructAddItem(StructAdd{Kind: "project", Name: "p", Parent: "f1", Status: "OnHold", Sequential: true})
-	if err != nil || it["parent"] != "f1" || it["status"] != "OnHold" || it["sequential"] != true {
-		t.Fatalf("%v %v", it, err)
-	}
-}
-
-func TestStructEditValidation(t *testing.T) {
-	bad := map[string]string{
-		"no id":          `{"kind":"tag","name":"x"}`,
-		"task kind":      `{"kind":"task","id":"a","name":"x"}`,
-		"no change":      `{"kind":"tag","id":"a"}`,
-		"empty name":     `{"kind":"tag","id":"a","name":""}`,
-		"folder status":  `{"kind":"folder","id":"a","status":"Active"}`,
-		"tag done":       `{"kind":"tag","id":"a","status":"Done"}`,
-		"move no parent": `{"kind":"tag","id":"a","move":{}}`,
-		"move empty":     `{"kind":"tag","id":"a","move":{"parent":""}}`,
-		"move self":      `{"kind":"tag","id":"a","move":{"parent":"a"}}`,
-		"move+reorder":   `{"kind":"tag","id":"a","move":{"parent":null},"reorder":{"after":"b"}}`,
-		"reorder none":   `{"kind":"tag","id":"a","reorder":{}}`,
-		"reorder both":   `{"kind":"tag","id":"a","reorder":{"before":"b","after":"c"}}`,
-		"reorder self":   `{"kind":"tag","id":"a","reorder":{"before":"a"}}`,
-		"seq on tag":     `{"kind":"tag","id":"a","sequential":true}`,
-	}
-	for name, js := range bad {
-		if _, err := newStructEditItem(decodeStructEdit(t, js)); err == nil {
-			t.Errorf("%s: want error", name)
-		}
-	}
-	it, err := newStructEditItem(decodeStructEdit(t, `{"kind":"project","id":"a","move":{"parent":null},"status":"Done"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(it)
-	if !strings.Contains(string(raw), `"move":{"parent":null}`) {
-		t.Errorf("root move must keep explicit null: %s", raw)
+	if got, want := wire(t, it), `{"kind":"project","name":"p","parent":"f1","status":"OnHold","sequential":true}`; got != want {
+		t.Errorf("full add:\n got %s\nwant %s", got, want)
+	}
+	min, err := newStructAddItem(StructAdd{Kind: "tag", Name: "g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := wire(t, min), `{"kind":"tag","name":"g"}`; got != want {
+		t.Errorf("minimal add: got %s want %s", got, want)
+	}
+}
+
+func TestStructEditWire(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"move to root": {`{"kind":"project","id":"a","move":{"parent":null},"status":"Done"}`, `{"kind":"project","id":"a","status":"Done","move":{"parent":null}}`},
+		"move parent":  {`{"kind":"tag","id":"a","move":{"parent":"p"}}`, `{"kind":"tag","id":"a","move":{"parent":"p"}}`},
+		"reorder":      {`{"kind":"tag","id":"a","reorder":{"after":"b"}}`, `{"kind":"tag","id":"a","reorder":{"after":"b"}}`},
+		"reorder lead": {`{"kind":"folder","id":"a","reorder":{"before":"b"}}`, `{"kind":"folder","id":"a","reorder":{"before":"b"}}`},
+		"scalars":      {`{"kind":"project","id":"a","name":"N","sequential":false}`, `{"kind":"project","id":"a","name":"N","sequential":false}`},
+	} {
+		it, err := newStructEditItem(decodeStructEdit(t, tc.in))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if got := wire(t, it); got != tc.want {
+			t.Errorf("%s:\n got %s\nwant %s", name, got, tc.want)
+		}
+	}
+}
+
+func TestStructRefWire(t *testing.T) {
+	it, err := newStructRefItem(StructRef{Kind: "task", ID: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := wire(t, it), `{"kind":"task","id":"a"}`; got != want {
+		t.Errorf("got %s want %s", got, want)
+	}
+}
+
+// Kind and Status are named types but must stay plain strings in the tool
+// schema: an enum would reject the whole call instead of one item.
+func TestNamedTypesStayStringSchemas(t *testing.T) {
+	add, err := jsonschema.For[StructAdd](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit, err := jsonschema.For[StructEdit](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, sch := range map[string]*jsonschema.Schema{"add": add, "edit": edit} {
+		for _, f := range []string{"kind", "status"} {
+			if p := sch.Properties[f]; p == nil || p.Type != "string" || len(p.Enum) != 0 {
+				t.Errorf("%s.%s: want plain string, got %+v", name, f, p)
+			}
+		}
 	}
 }
 

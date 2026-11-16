@@ -4,10 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 )
 
-// Kinds a structure tool operates on.
+// Kind names the object type a structure item targets. It stays a plain string
+// on the wire: unknown values are rejected per item by the constructors, never
+// by decoding or the schema, so one bad item cannot fail the whole call.
+type Kind string
+
+// Status is a project or tag status as the client spells it.
+type Status string
+
+// Kinds a structure tool operates on. Untyped so StructRef.Kind (a plain
+// string) compares against them.
 const (
 	kindTask    = "task"
 	kindProject = "project"
@@ -15,12 +25,19 @@ const (
 	kindFolder  = "folder"
 )
 
+// Statuses a structure item may set; which apply depends on the kind.
+const (
+	statusActive Status = "Active"
+	statusOnHold Status = "OnHold"
+	statusDone   Status = "Done"
+)
+
 // StructAdd is one add item: a project, tag or folder.
 type StructAdd struct {
-	Kind       string `json:"kind" jsonschema:"project, tag or folder"`
+	Kind       Kind   `json:"kind" jsonschema:"project, tag or folder"`
 	Name       string `json:"name"`
 	Parent     string `json:"parent,omitempty" jsonschema:"folder id (project, folder) or tag id (tag); omit for the root"`
-	Status     string `json:"status,omitempty" jsonschema:"project: Active, OnHold, Done; tag: Active, OnHold"`
+	Status     Status `json:"status,omitempty" jsonschema:"project: Active, OnHold, Done; tag: Active, OnHold"`
 	Sequential bool   `json:"sequential,omitempty" jsonschema:"project only: sequential instead of parallel"`
 }
 
@@ -37,10 +54,10 @@ type StructReorder struct {
 
 // StructEdit is one edit item. Omitted means unchanged.
 type StructEdit struct {
-	Kind       string         `json:"kind" jsonschema:"project, tag or folder"`
+	Kind       Kind           `json:"kind" jsonschema:"project, tag or folder"`
 	ID         string         `json:"id"`
 	Name       *string        `json:"name,omitempty"`
-	Status     string         `json:"status,omitempty" jsonschema:"project: Active, OnHold, Done; tag: Active, OnHold (Active re-activates a dropped tag); folders have no status edit"`
+	Status     Status         `json:"status,omitempty" jsonschema:"project: Active, OnHold, Done; tag: Active, OnHold (Active re-activates a dropped tag); folders have no status edit"`
 	Sequential *bool          `json:"sequential,omitempty" jsonschema:"project only"`
 	Move       *StructMove    `json:"move,omitempty" jsonschema:"parent: folder id (project, folder), tag id (tag) or null for the root"`
 	Reorder    *StructReorder `json:"reorder,omitempty" jsonschema:"mutually exclusive with move; the sibling's parent becomes the parent"`
@@ -66,7 +83,7 @@ type StructResult struct {
 
 func failStruct(id, msg string) StructResult { return StructResult{ID: id, Error: msg} }
 
-func checkKind(kind string, allowed ...string) error {
+func checkKind(kind Kind, allowed ...Kind) error {
 	if !slices.Contains(allowed, kind) {
 		return fmt.Errorf("kind: %q is not one of %v", kind, allowed)
 	}
@@ -74,8 +91,8 @@ func checkKind(kind string, allowed ...string) error {
 }
 
 // checkStatus validates a status for kind; empty means unset.
-func checkStatus(kind, status string) error {
-	allowed := map[string][]string{kindProject: {"Active", "OnHold", "Done"}, kindTag: {"Active", "OnHold"}}[kind]
+func checkStatus(kind Kind, status Status) error {
+	allowed := map[Kind][]Status{kindProject: {statusActive, statusOnHold, statusDone}, kindTag: {statusActive, statusOnHold}}[kind]
 	switch {
 	case status == "":
 		return nil
@@ -87,82 +104,94 @@ func checkStatus(kind, status string) error {
 	return nil
 }
 
-func newStructAddItem(a StructAdd) (writeItem, error) {
-	if err := errors.Join(checkKind(a.Kind, kindProject, kindTag, kindFolder), nonEmpty("name", a.Name), checkStatus(a.Kind, a.Status)); err != nil {
-		return nil, err
-	}
-	if a.Sequential && a.Kind != kindProject {
-		return nil, errors.New("sequential: only for projects")
-	}
-	it := writeItem{"kind": a.Kind, "name": a.Name}
-	for k, v := range map[string]string{"parent": a.Parent, "status": a.Status} {
-		if v != "" {
-			it[k] = v
-		}
-	}
-	if a.Sequential {
-		it["sequential"] = true
-	}
-	return it, nil
+// structAddItem is a validated add_structure item in script form.
+type structAddItem struct {
+	Kind       Kind   `json:"kind"`
+	Name       string `json:"name"`
+	Parent     string `json:"parent,omitempty"`
+	Status     Status `json:"status,omitempty"`
+	Sequential bool   `json:"sequential,omitempty"`
 }
 
-func newStructEditItem(p StructEdit) (writeItem, error) {
-	if err := errors.Join(checkKind(p.Kind, kindProject, kindTag, kindFolder), nonEmpty("id", p.ID), checkStatus(p.Kind, p.Status)); err != nil {
-		return nil, err
+// structEditItem is a validated edit_structure patch in script form. Move
+// carries its parent as an explicit null for the root.
+type structEditItem struct {
+	Kind       Kind           `json:"kind"`
+	ID         string         `json:"id"`
+	Name       *string        `json:"name,omitempty"`
+	Status     Status         `json:"status,omitempty"`
+	Sequential *bool          `json:"sequential,omitempty"`
+	Move       *StructMove    `json:"move,omitempty"`
+	Reorder    *StructReorder `json:"reorder,omitempty"`
+}
+
+// changesNothing reports a patch that sets no field besides kind and id.
+func (p structEditItem) changesNothing() bool {
+	p.Kind, p.ID = "", ""
+	return reflect.ValueOf(p).IsZero()
+}
+
+// structRefItem is a validated drop or delete item in script form.
+type structRefItem struct {
+	Kind Kind   `json:"kind"`
+	ID   string `json:"id"`
+}
+
+func newStructAddItem(a StructAdd) (structAddItem, error) {
+	if err := errors.Join(checkKind(a.Kind, kindProject, kindTag, kindFolder), nonEmpty("name", a.Name), checkStatus(a.Kind, a.Status)); err != nil {
+		return structAddItem{}, err
 	}
-	it := writeItem{"kind": p.Kind, "id": p.ID}
+	if a.Sequential && a.Kind != kindProject {
+		return structAddItem{}, errors.New("sequential: only for projects")
+	}
+	return structAddItem(a), nil
+}
+
+func newStructEditItem(p StructEdit) (structEditItem, error) {
+	if err := errors.Join(checkKind(p.Kind, kindProject, kindTag, kindFolder), nonEmpty("id", p.ID), checkStatus(p.Kind, p.Status)); err != nil {
+		return structEditItem{}, err
+	}
 	if p.Name != nil {
 		if err := nonEmpty("name", *p.Name); err != nil {
-			return nil, err
+			return structEditItem{}, err
 		}
-		it["name"] = *p.Name
 	}
-	if p.Status != "" {
-		it["status"] = p.Status
-	}
-	if p.Sequential != nil {
-		if p.Kind != kindProject {
-			return nil, errors.New("sequential: only for projects")
-		}
-		it["sequential"] = *p.Sequential
+	if p.Sequential != nil && p.Kind != kindProject {
+		return structEditItem{}, errors.New("sequential: only for projects")
 	}
 	if p.Move != nil && p.Reorder != nil {
-		return nil, errors.New("move and reorder are mutually exclusive")
+		return structEditItem{}, errors.New("move and reorder are mutually exclusive")
 	}
 	if m := p.Move; m != nil {
 		switch {
 		case !m.Parent.Set:
-			return nil, errors.New("move: parent is required (an id, or null for the root)")
-		case m.Parent.Null:
-			it["move"] = map[string]any{"parent": nil}
-		case m.Parent.Value == "":
-			return nil, errors.New("move: empty parent; use null for the root")
-		case m.Parent.Value == p.ID:
-			return nil, errors.New("move: an object cannot be its own parent")
-		default:
-			it["move"] = map[string]any{"parent": m.Parent.Value}
+			return structEditItem{}, errors.New("move: parent is required (an id, or null for the root)")
+		case !m.Parent.Null && m.Parent.Value == "":
+			return structEditItem{}, errors.New("move: empty parent; use null for the root")
+		case !m.Parent.Null && m.Parent.Value == p.ID:
+			return structEditItem{}, errors.New("move: an object cannot be its own parent")
 		}
 	}
 	if r := p.Reorder; r != nil {
 		if (r.Before == "") == (r.After == "") {
-			return nil, errors.New("reorder: exactly one of before or after")
+			return structEditItem{}, errors.New("reorder: exactly one of before or after")
 		}
 		if r.Before == p.ID || r.After == p.ID {
-			return nil, errors.New("reorder: an object cannot be its own sibling")
+			return structEditItem{}, errors.New("reorder: an object cannot be its own sibling")
 		}
-		it["reorder"] = r
 	}
-	if len(it) == 2 {
-		return nil, errors.New("patch changes nothing")
+	it := structEditItem(p)
+	if it.changesNothing() {
+		return structEditItem{}, errors.New("patch changes nothing")
 	}
 	return it, nil
 }
 
-func newStructRefItem(r StructRef) (writeItem, error) {
-	if err := errors.Join(checkKind(r.Kind, kindTask, kindProject, kindTag, kindFolder), nonEmpty("id", r.ID)); err != nil {
-		return nil, err
+func newStructRefItem(r StructRef) (structRefItem, error) {
+	if err := errors.Join(checkKind(Kind(r.Kind), kindTask, kindProject, kindTag, kindFolder), nonEmpty("id", r.ID)); err != nil {
+		return structRefItem{}, err
 	}
-	return writeItem{"kind": r.Kind, "id": r.ID}, nil
+	return structRefItem{Kind: Kind(r.Kind), ID: r.ID}, nil
 }
 
 // AddStructure creates projects, tags and folders in one script call; results keep input order.
@@ -170,7 +199,7 @@ func (b *Bridge) AddStructure(ctx context.Context, adds []StructAdd) ([]StructRe
 	if len(adds) == 0 {
 		return nil, errors.New("items: at least one item is required")
 	}
-	return runBatch(ctx, b, "add_structure", len(adds), nil, failStruct, func(i int) (writeItem, error) { return newStructAddItem(adds[i]) })
+	return runBatch(ctx, b, "add_structure", len(adds), nil, failStruct, func(i int) (structAddItem, error) { return newStructAddItem(adds[i]) })
 }
 
 // EditStructure patches projects, tags and folders, with the same result contract as AddStructure.
@@ -182,7 +211,7 @@ func (b *Bridge) EditStructure(ctx context.Context, patches []StructEdit) ([]Str
 	for i, p := range patches {
 		ids[i] = p.ID
 	}
-	return runBatch(ctx, b, "edit_structure", len(patches), ids, failStruct, func(i int) (writeItem, error) { return newStructEditItem(patches[i]) })
+	return runBatch(ctx, b, "edit_structure", len(patches), ids, failStruct, func(i int) (structEditItem, error) { return newStructEditItem(patches[i]) })
 }
 
 // DropObjects drops tasks, projects, tags or folders. Guards (a tag with
@@ -205,5 +234,5 @@ func (b *Bridge) refBatch(ctx context.Context, script string, refs []StructRef) 
 	for i, r := range refs {
 		ids[i] = r.ID
 	}
-	return runBatch(ctx, b, script, len(refs), ids, failStruct, func(i int) (writeItem, error) { return newStructRefItem(refs[i]) })
+	return runBatch(ctx, b, script, len(refs), ids, failStruct, func(i int) (structRefItem, error) { return newStructRefItem(refs[i]) })
 }
