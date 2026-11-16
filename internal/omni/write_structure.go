@@ -103,94 +103,66 @@ func checkStatus(kind Kind, status Status) error {
 	return nil
 }
 
-// structAddItem is a validated add_structure item in script form.
-type structAddItem struct {
-	Kind       Kind   `json:"kind"`
-	Name       string `json:"name"`
-	Parent     string `json:"parent,omitempty"`
-	Status     Status `json:"status,omitempty"`
-	Sequential bool   `json:"sequential,omitempty"`
-}
-
-// structEditItem is a validated edit_structure patch in script form. Move
-// carries its parent as an explicit null for the root.
-type structEditItem struct {
-	Kind       Kind           `json:"kind"`
-	ID         string         `json:"id"`
-	Name       *string        `json:"name,omitempty"`
-	Status     Status         `json:"status,omitempty"`
-	Sequential *bool          `json:"sequential,omitempty"`
-	Move       *StructMove    `json:"move,omitempty"`
-	Reorder    *StructReorder `json:"reorder,omitempty"`
-}
-
 // changesNothing reports a patch that sets no field besides kind and id.
-func (p structEditItem) changesNothing() bool {
+func (p StructEdit) changesNothing() bool {
 	p.Kind, p.ID = "", ""
 	return reflect.ValueOf(p).IsZero()
 }
 
-// structRefItem is a validated drop or delete item in script form.
-type structRefItem struct {
-	Kind Kind   `json:"kind"`
-	ID   string `json:"id"`
-}
-
-func newStructAddItem(a StructAdd) (structAddItem, error) {
+func newStructAddItem(a StructAdd) (StructAdd, error) {
 	if err := errors.Join(checkKind(a.Kind, kindProject, kindTag, kindFolder), nonEmpty("name", a.Name), checkStatus(a.Kind, a.Status)); err != nil {
-		return structAddItem{}, err
+		return StructAdd{}, err
 	}
 	if a.Sequential && a.Kind != kindProject {
-		return structAddItem{}, errors.New("sequential: only for projects")
+		return StructAdd{}, errors.New("sequential: only for projects")
 	}
-	return structAddItem(a), nil
+	return a, nil
 }
 
-func newStructEditItem(p StructEdit) (structEditItem, error) {
+func newStructEditItem(p StructEdit) (StructEdit, error) {
 	if err := errors.Join(checkKind(p.Kind, kindProject, kindTag, kindFolder), nonEmpty("id", p.ID), checkStatus(p.Kind, p.Status)); err != nil {
-		return structEditItem{}, err
+		return StructEdit{}, err
 	}
 	if p.Name != nil {
 		if err := nonEmpty("name", *p.Name); err != nil {
-			return structEditItem{}, err
+			return StructEdit{}, err
 		}
 	}
 	if p.Sequential != nil && p.Kind != kindProject {
-		return structEditItem{}, errors.New("sequential: only for projects")
+		return StructEdit{}, errors.New("sequential: only for projects")
 	}
 	if p.Move != nil && p.Reorder != nil {
-		return structEditItem{}, errors.New("move and reorder are mutually exclusive")
+		return StructEdit{}, errors.New("move and reorder are mutually exclusive")
 	}
 	if m := p.Move; m != nil {
 		switch {
 		case !m.Parent.Set:
-			return structEditItem{}, errors.New("move: parent is required (an id, or null for the root)")
+			return StructEdit{}, errors.New("move: parent is required (an id, or null for the root)")
 		case !m.Parent.Null && m.Parent.Value == "":
-			return structEditItem{}, errors.New("move: empty parent; use null for the root")
+			return StructEdit{}, errors.New("move: empty parent; use null for the root")
 		case !m.Parent.Null && m.Parent.Value == p.ID:
-			return structEditItem{}, errors.New("move: an object cannot be its own parent")
+			return StructEdit{}, errors.New("move: an object cannot be its own parent")
 		}
 	}
 	if r := p.Reorder; r != nil {
 		if (r.Before == "") == (r.After == "") {
-			return structEditItem{}, errors.New("reorder: exactly one of before or after")
+			return StructEdit{}, errors.New("reorder: exactly one of before or after")
 		}
 		if r.Before == p.ID || r.After == p.ID {
-			return structEditItem{}, errors.New("reorder: an object cannot be its own sibling")
+			return StructEdit{}, errors.New("reorder: an object cannot be its own sibling")
 		}
 	}
-	it := structEditItem(p)
-	if it.changesNothing() {
-		return structEditItem{}, errors.New("patch changes nothing")
+	if p.changesNothing() {
+		return StructEdit{}, errors.New("patch changes nothing")
 	}
-	return it, nil
+	return p, nil
 }
 
-func newStructRefItem(r StructRef) (structRefItem, error) {
+func newStructRefItem(r StructRef) (StructRef, error) {
 	if err := errors.Join(checkKind(r.Kind, kindTask, kindProject, kindTag, kindFolder), nonEmpty("id", r.ID)); err != nil {
-		return structRefItem{}, err
+		return StructRef{}, err
 	}
-	return structRefItem{Kind: r.Kind, ID: r.ID}, nil
+	return r, nil
 }
 
 // AddStructure creates projects, tags and folders in one script call; results keep input order.
@@ -198,7 +170,7 @@ func (b *Bridge) AddStructure(ctx context.Context, adds []StructAdd) ([]StructRe
 	if len(adds) == 0 {
 		return nil, errors.New("items: at least one item is required")
 	}
-	return runBatch(ctx, b, "add_structure", len(adds), nil, failStruct, func(i int) (structAddItem, error) { return newStructAddItem(adds[i]) })
+	return runBatch(ctx, b, "add_structure", len(adds), nil, failStruct, func(i int) (StructAdd, error) { return newStructAddItem(adds[i]) })
 }
 
 // EditStructure patches projects, tags and folders, with the same result contract as AddStructure.
@@ -210,7 +182,7 @@ func (b *Bridge) EditStructure(ctx context.Context, patches []StructEdit) ([]Str
 	for i, p := range patches {
 		ids[i] = p.ID
 	}
-	return runBatch(ctx, b, "edit_structure", len(patches), ids, failStruct, func(i int) (structEditItem, error) { return newStructEditItem(patches[i]) })
+	return runBatch(ctx, b, "edit_structure", len(patches), ids, failStruct, func(i int) (StructEdit, error) { return newStructEditItem(patches[i]) })
 }
 
 // DropObjects drops tasks, projects, tags or folders. Guards (a tag with
@@ -233,5 +205,5 @@ func (b *Bridge) refBatch(ctx context.Context, script string, refs []StructRef) 
 	for i, r := range refs {
 		ids[i] = r.ID
 	}
-	return runBatch(ctx, b, script, len(refs), ids, failStruct, func(i int) (structRefItem, error) { return newStructRefItem(refs[i]) })
+	return runBatch(ctx, b, script, len(refs), ids, failStruct, func(i int) (StructRef, error) { return newStructRefItem(refs[i]) })
 }
