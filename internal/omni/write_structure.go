@@ -16,13 +16,12 @@ type Kind string
 // Status is a project or tag status as the client spells it.
 type Status string
 
-// Kinds a structure tool operates on. Untyped so StructRef.Kind (a plain
-// string) compares against them.
+// Kinds a structure tool operates on.
 const (
-	kindTask    = "task"
-	kindProject = "project"
-	kindTag     = "tag"
-	kindFolder  = "folder"
+	kindTask    Kind = "task"
+	kindProject Kind = "project"
+	kindTag     Kind = "tag"
+	kindFolder  Kind = "folder"
 )
 
 // Statuses a structure item may set; which apply depends on the kind.
@@ -65,7 +64,7 @@ type StructEdit struct {
 
 // StructRef names one object for drop or delete.
 type StructRef struct {
-	Kind string `json:"kind" jsonschema:"task, project, tag or folder"`
+	Kind Kind   `json:"kind" jsonschema:"task, project, tag or folder"`
 	ID   string `json:"id"`
 }
 
@@ -188,10 +187,10 @@ func newStructEditItem(p StructEdit) (structEditItem, error) {
 }
 
 func newStructRefItem(r StructRef) (structRefItem, error) {
-	if err := errors.Join(checkKind(Kind(r.Kind), kindTask, kindProject, kindTag, kindFolder), nonEmpty("id", r.ID)); err != nil {
+	if err := errors.Join(checkKind(r.Kind, kindTask, kindProject, kindTag, kindFolder), nonEmpty("id", r.ID)); err != nil {
 		return structRefItem{}, err
 	}
-	return structRefItem{Kind: Kind(r.Kind), ID: r.ID}, nil
+	return structRefItem{Kind: r.Kind, ID: r.ID}, nil
 }
 
 // AddStructure creates projects, tags and folders in one script call; results keep input order.

@@ -40,11 +40,11 @@ func TestLiveStructureWrites(t *testing.T) {
 	}
 	add := func(a StructAdd) StructResult { t.Helper(); return mustOK(one(b.AddStructure(ctx, []StructAdd{a}))) }
 	edit := func(e StructEdit) StructResult { t.Helper(); return mustOK(one(b.EditStructure(ctx, []StructEdit{e}))) }
-	drop := func(k, id string) StructResult { return one(b.DropObjects(ctx, []StructRef{{Kind: k, ID: id}})) }
-	del := func(k, id string) StructResult { return one(b.DeleteObjects(ctx, []StructRef{{Kind: k, ID: id}})) }
+	drop := func(k Kind, id string) StructResult { return one(b.DropObjects(ctx, []StructRef{{Kind: k, ID: id}})) }
+	del := func(k Kind, id string) StructResult { return one(b.DeleteObjects(ctx, []StructRef{{Kind: k, ID: id}})) }
 
 	var created []StructRef // fallback cleanup, newest first on use
-	track := func(k, id string) { created = append(created, StructRef{Kind: k, ID: id}) }
+	track := func(k Kind, id string) { created = append(created, StructRef{Kind: k, ID: id}) }
 	t.Cleanup(func() {
 		for i := len(created) - 1; i >= 0; i-- {
 			c := created[i]

@@ -79,6 +79,10 @@ func TestStructRefWire(t *testing.T) {
 // Kind and Status are named types but must stay plain strings in the tool
 // schema: an enum would reject the whole call instead of one item.
 func TestNamedTypesStayStringSchemas(t *testing.T) {
+	ref, err := jsonschema.For[StructRef](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	add, err := jsonschema.For[StructAdd](nil)
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +97,9 @@ func TestNamedTypesStayStringSchemas(t *testing.T) {
 				t.Errorf("%s.%s: want plain string, got %+v", name, f, p)
 			}
 		}
+	}
+	if p := ref.Properties["kind"]; p == nil || p.Type != "string" || len(p.Enum) != 0 {
+		t.Errorf("ref.kind: want plain string, got %+v", p)
 	}
 }
 
