@@ -35,6 +35,15 @@ type Task struct {
 	Due         string `json:"due,omitempty"`
 	Planned     string `json:"planned,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
+
+	EstimatedMinutes *int        `json:"estimatedMinutes,omitempty"`
+	Repetition       *Repetition `json:"repetition,omitempty"`
+}
+
+// Repetition is a task's repeat rule: an RRULE string and the method name (Fixed, DeferUntilDate, DueDate, ...).
+type Repetition struct {
+	Rule   string `json:"rule"`
+	Method string `json:"method"`
 }
 
 // Project is a project with its folder, tags and dates.

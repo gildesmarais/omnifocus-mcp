@@ -44,7 +44,7 @@ Per-type getters `get_task`, `get_project`, `get_tag`, `get_folder` (not one `ge
 
 ### Read (read-only)
 
-- `list_tasks` — filters (all optional, AND-combined): `inbox` (bool; includes nested inbox tasks; combining `inbox: true` with `project` is an error), `project` (id or name), `tag` (id or name), `available` (bool: not blocked/deferred/completed/dropped), `flagged` (bool), `completed` (bool), `due_before`, `defer_before` (dates), `search` (substring over name and note), `limit` (default 50; `null` = all). Returns tasks with id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed, status.
+- `list_tasks` — filters (all optional, AND-combined): `inbox` (bool; includes nested inbox tasks; combining `inbox: true` with `project` is an error), `project` (id or name), `tag` (id or name), `available` (bool: not blocked/deferred/completed/dropped), `flagged` (bool), `completed` (bool), `due_before`, `defer_before` (dates), `search` (substring over name and note), `limit` (default 50; `null` = all). Returns tasks with id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed, status, `estimatedMinutes` (omitted when unset), `repetition` (`{rule, method}`: RRULE string and repetition method; omitted when not repeating).
 - `list_projects` — `status` filter (`Active`, `OnHold`, `Done`, `Dropped`), optional `folder`, `search`, `limit`.
 - `list_tags` — includes status and `remainingTasks`.
 - `list_folders` — includes parent and status.

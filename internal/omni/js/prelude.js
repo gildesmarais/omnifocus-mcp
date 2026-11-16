@@ -26,6 +26,8 @@ const shapeTask = t => {
   if (t.note) o.note = t.note;
   const p = ref(t.containingProject); if (p) o.project = p;
   const par = ref(t.parent); if (par) o.parent = par;
+  if (t.estimatedMinutes != null) o.estimatedMinutes = t.estimatedMinutes;
+  const rr = t.repetitionRule; if (rr) o.repetition = { rule: rr.ruleString, method: statusName(rr.method) };
   return withDates(o, t);
 };
 // Structure helpers (add/edit/drop/delete). byKind maps a kind to its class; tags nest under tags, the rest under library.

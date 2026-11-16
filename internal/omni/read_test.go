@@ -34,6 +34,20 @@ func TestListTasksMarshalsFiltersAndDecodes(t *testing.T) {
 	}
 }
 
+func TestTaskDecodesEstimateAndRepetition(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"a","name":"A","status":"Available","tags":[],"estimatedMinutes":25,"repetition":{"rule":"FREQ=WEEKLY;INTERVAL=1;BYDAY=FR","method":"Fixed"}},{"id":"b","name":"B","status":"Available","tags":[]}]`}
+	got, err := (&Bridge{Runner: r}).ListTasks(context.Background(), TaskFilter{})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	if got[0].EstimatedMinutes == nil || *got[0].EstimatedMinutes != 25 || got[0].Repetition == nil || got[0].Repetition.Method != "Fixed" || got[0].Repetition.Rule != "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR" {
+		t.Fatalf("bad decode %+v", got[0])
+	}
+	if got[1].EstimatedMinutes != nil || got[1].Repetition != nil {
+		t.Fatalf("want omitted fields %+v", got[1])
+	}
+}
+
 func TestListTasksRejectsBadInput(t *testing.T) {
 	b := &Bridge{Runner: &captureRunner{res: `[]`}}
 	neg := -1
