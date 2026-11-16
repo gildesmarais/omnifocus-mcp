@@ -12,11 +12,12 @@ import (
 func TestScriptGuardsPresent(t *testing.T) {
 	src := func(name string) string { return mustRead("js/" + name + ".js") }
 	for name, wants := range map[string][]string{
-		"prelude":    {"containingProject.task === t", "is a project, use kind project", `if (kind === "task") return findTask(id)`},
-		"edit_tasks": {"findTask(p.id)", `findTask(p.move.parent, "parent task")`},
+		"prelude":    {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`},
+		"edit_tasks": {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)"},
 		"add_tasks":  {`findTask(a.parent, "parent task")`},
 		"tasks":      {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)"},
 		"delete":     {"o.flattenedTasks", "o.flattenedChildren", "remaining(", "drop it instead"},
+		"drop":       {"flattenedTags", "inside(o, g)", "remaining task(s)"},
 	} {
 		for _, w := range wants {
 			if !strings.Contains(src(name), w) {

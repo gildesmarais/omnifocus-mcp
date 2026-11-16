@@ -116,9 +116,7 @@ func compose(body string, args any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// U+2028/2029 are valid in JSON strings but historically not in JS literals.
-	l := strings.NewReplacer(" ", ` `, " ", ` `).Replace(string(lit))
-	return prelude + "\nJSON.stringify((" + body + ")(JSON.parse(" + l + ")))", nil
+	return prelude + "\nJSON.stringify((" + body + ")(JSON.parse(" + string(lit) + ")))", nil
 }
 
 // OsascriptRunner is the real Runner.

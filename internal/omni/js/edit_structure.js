@@ -2,7 +2,6 @@
   // args.items: validated patches. Every lookup and guard runs before the first
   // mutation so a bad target leaves the object untouched.
   const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
-  const inside = (o, x) => { for (let c = x; c; c = c.parent) if (c.id.primaryKey === o.id.primaryKey) return true; return false; };
   return eachItem(args.items, p => {
     const o = find(p.kind, p.id);
     const tag = p.kind === "tag", nested = p.kind !== "project";

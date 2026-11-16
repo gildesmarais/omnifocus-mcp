@@ -5,17 +5,12 @@
     const ts = statusName(p.taskStatus);
     const o = {
       id: p.id.primaryKey, name: p.name, status: statusName(p.status), flagged: p.flagged,
-      sequential: p.sequential, available: ts === "Available" || ts === "DueSoon" || ts === "Next" || ts === "Overdue",
+      sequential: p.sequential, available: OK.has(ts),
       blocked: ts === "Blocked", tags: p.tags.map(ref)
     };
     if (p.note) o.note = p.note;
     const f = ref(p.parentFolder); if (f) o.folder = f;
-    const df = iso(p.deferDate), du = iso(p.dueDate), pl = iso(p.plannedDate), dn = iso(p.completionDate);
-    if (df) o.defer = df;
-    if (du) o.due = du;
-    if (pl) o.planned = pl;
-    if (dn) o.completedAt = dn;
-    return o;
+    return withDates(o, p);
   }
 
   if (args.id) {

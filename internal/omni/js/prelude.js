@@ -6,6 +6,15 @@ const statusName = s => (/: (\w+)\]/.exec(String(s)) || [])[1];
 const match = (o, q) => o.id.primaryKey === q || o.name === q;
 const parseDate = s => (s ? new Date(s.length === 10 ? s + "T00:00:00" : s) : null);
 const OK = new Set(["Available", "DueSoon", "Next", "Overdue"]);
+// Adds the defer/due/planned/completedAt keys that are set.
+const withDates = (o, x) => {
+  const df = iso(x.deferDate), du = iso(x.dueDate), pl = iso(x.plannedDate), dn = iso(x.completionDate);
+  if (df) o.defer = df;
+  if (du) o.due = du;
+  if (pl) o.planned = pl;
+  if (dn) o.completedAt = dn;
+  return o;
+};
 // A task as the Task record in read.go.
 const shapeTask = t => {
   const st = statusName(t.taskStatus);
@@ -17,12 +26,7 @@ const shapeTask = t => {
   if (t.note) o.note = t.note;
   const p = ref(t.containingProject); if (p) o.project = p;
   const par = ref(t.parent); if (par) o.parent = par;
-  const df = iso(t.deferDate), du = iso(t.dueDate), pl = iso(t.plannedDate);
-  if (df) o.defer = df;
-  if (du) o.due = du;
-  if (pl) o.planned = pl;
-  const dn = iso(t.completionDate); if (dn) o.completedAt = dn;
-  return o;
+  return withDates(o, t);
 };
 // Structure helpers (add/edit/drop/delete). byKind maps a kind to its class; tags nest under tags, the rest under library.
 const byKind = { task: Task, project: Project, tag: Tag, folder: Folder };
@@ -39,6 +43,8 @@ const find = (kind, id) => {
   if (kind === "task") return findTask(id);
   const o = byKind[kind].byIdentifier(id); if (!o) throw new Error(kind + " not found"); return o;
 };
+// True when x is o or a descendant of o (walks .parent).
+const inside = (o, x) => { for (let c = x; c; c = c.parent) if (c.id.primaryKey === o.id.primaryKey) return true; return false; };
 // Tasks neither completed nor dropped.
 const remaining = ts => ts.filter(t => { const s = statusName(t.taskStatus); return s !== "Completed" && s !== "Dropped"; });
 // A project, tag, folder or task as StructResult in write_structure.go.

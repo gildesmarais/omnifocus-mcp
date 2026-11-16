@@ -49,6 +49,16 @@ func TestComposeEmbedsArgsAsLiteralNotCode(t *testing.T) {
 	}
 }
 
+func TestComposeEscapesLineSeparators(t *testing.T) {
+	src, err := compose("(function(a){return a})", map[string]string{"q": "a\u2028b\u2029c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(src, "\u2028\u2029") || !strings.Contains(src, `\u2028`) || !strings.Contains(src, `\u2029`) {
+		t.Fatalf("separators not escaped: %s", src)
+	}
+}
+
 func TestRunnerErrorIsWrapped(t *testing.T) {
 	_, err := (&Bridge{Runner: &fake{err: ErrNotRunning}}).Perspectives(context.Background())
 	if !errors.Is(err, ErrNotRunning) {

@@ -11,7 +11,11 @@
       if (p.move) {
         if (p.move.inbox) pos = inbox.ending;
         else if (p.move.project) pos = need(Project.byIdentifier(p.move.project), "project").ending;
-        else pos = findTask(p.move.parent, "parent task").ending;
+        else {
+          const par = findTask(p.move.parent, "parent task");
+          if (inside(t, par)) throw new Error("cannot move task into itself or its subtask");
+          pos = par.ending;
+        }
       }
       const tagsOf = ids => (ids || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
       const add = tagsOf(p.tagsAdd), rem = tagsOf(p.tagsRemove);

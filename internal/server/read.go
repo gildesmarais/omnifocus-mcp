@@ -18,8 +18,8 @@ type listTasksIn struct {
 	Available   *bool  `json:"available,omitempty" jsonschema:"true: not blocked, deferred, completed or dropped"`
 	Flagged     *bool  `json:"flagged,omitempty"`
 	Completed   *bool  `json:"completed,omitempty"`
-	DueBefore   string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS, local time"`
-	DeferBefore string `json:"defer_before,omitempty" jsonschema:"YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS, local time"`
+	DueBefore   string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
+	DeferBefore string `json:"defer_before,omitempty" jsonschema:"YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 	Search      string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
 	Limit       *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
 }
