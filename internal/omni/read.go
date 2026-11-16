@@ -82,7 +82,7 @@ type Folder struct {
 }
 
 // TaskFilter holds list_tasks filters; nil/zero means "no filter".
-// Limit nil means all tasks; callers choose the default.
+// Limit nil means all tasks; the MCP schema default (server withLimitDefault) is 50.
 type TaskFilter struct {
 	Inbox       *bool  `json:"inbox,omitempty" jsonschema:"only inbox tasks (true) or only non-inbox tasks (false)"`
 	Project     string `json:"project,omitempty" jsonschema:"project id or exact name"`

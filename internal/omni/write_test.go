@@ -175,24 +175,16 @@ func TestScriptResultCountMismatch(t *testing.T) {
 	}
 }
 
-// tagRouter answers the tag lookup and the add script from one runner and records the add source.
-type tagRouter struct{ addSrc string }
-
-func (r *tagRouter) Run(_ context.Context, src string) (string, error) {
-	if strings.Contains(src, "Serves list_tags") {
-		return `[{"id":"t1","name":"home","status":"Active","remainingTasks":0}]`, nil
-	}
-	r.addSrc = src
-	return `[{"id":"n","ok":true,"task":{"id":"n","name":"x","status":"Available","tags":[{"id":"t1","name":"home"}]}}]`, nil
-}
-
 func TestAddTasksResolvesTagNameToID(t *testing.T) {
-	r := &tagRouter{}
+	r := &route{
+		tags: `[{"id":"t1","name":"home","status":"Active","remainingTasks":0}]`,
+		res:  `[{"id":"n","ok":true,"task":{"id":"n","name":"x","status":"Available","tags":[{"id":"t1","name":"home"}]}}]`,
+	}
 	got, err := (&Bridge{Runner: r}).AddTasks(context.Background(), []TaskAdd{{Name: "x", Tags: []string{"home"}}})
 	if err != nil || len(got) != 1 || !got[0].OK {
 		t.Fatalf("%+v %v", got, err)
 	}
-	if !strings.Contains(r.addSrc, `\"tags\":[\"t1\"]`) || strings.Contains(r.addSrc, "home") {
-		t.Fatalf("add script must carry the tag id, not the name: %s", r.addSrc)
+	if !strings.Contains(r.writeSrc, `\"tags\":[\"t1\"]`) || strings.Contains(r.writeSrc, "home") {
+		t.Fatalf("add script must carry the tag id, not the name: %s", r.writeSrc)
 	}
 }

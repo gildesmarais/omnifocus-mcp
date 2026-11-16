@@ -60,10 +60,12 @@ func TestInboxWithProjectRejected(t *testing.T) {
 }
 
 // route answers by script: the tags script gets tags, everything else res.
+// writeSrc records the last non-tag script source.
 type route struct {
 	tags, res string
 	tagsErr   error
 	scripts   []string
+	writeSrc  string
 }
 
 func (r *route) Run(_ context.Context, src string) (string, error) {
@@ -72,6 +74,7 @@ func (r *route) Run(_ context.Context, src string) (string, error) {
 		return r.tags, r.tagsErr
 	}
 	r.scripts = append(r.scripts, "write")
+	r.writeSrc = src
 	return r.res, nil
 }
 

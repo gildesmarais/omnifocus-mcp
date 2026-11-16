@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"flag"
+	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -10,21 +13,30 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type fakeRunner struct{ res string }
-
-func (f fakeRunner) Run(context.Context, string) (string, error) { return f.res, nil }
-
-func TestListPerspectivesOverMCP(t *testing.T) {
+// connect serves the tools over an in-memory transport and returns the client session.
+func connect(t *testing.T, r omni.Runner) *mcp.ClientSession {
+	t.Helper()
 	ctx := context.Background()
-	b := &omni.Bridge{Runner: fakeRunner{`[{"id":null,"name":"Inbox","builtin":true}]`}}
 	ct, st := mcp.NewInMemoryTransports()
-	if _, err := New(b, "test").Connect(ctx, st, nil); err != nil {
+	if _, err := New(&omni.Bridge{Runner: r}, "test").Connect(ctx, st, nil); err != nil {
 		t.Fatal(err)
 	}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return cs
+}
+
+var update = flag.Bool("update", false, "rewrite testdata golden files")
+
+type fakeRunner struct{ res string }
+
+func (f fakeRunner) Run(context.Context, string) (string, error) { return f.res, nil }
+
+func TestListPerspectivesOverMCP(t *testing.T) {
+	ctx := context.Background()
+	cs := connect(t, fakeRunner{`[{"id":null,"name":"Inbox","builtin":true}]`})
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "list_perspectives"})
 	if err != nil || res.IsError {
 		t.Fatalf("err=%v res=%+v", err, res)
@@ -36,16 +48,37 @@ func TestListPerspectivesOverMCP(t *testing.T) {
 	}
 }
 
-func TestToolsListPins(t *testing.T) {
-	ctx := context.Background()
-	ct, st := mcp.NewInMemoryTransports()
-	if _, err := New(&omni.Bridge{Runner: fakeRunner{"[]"}}, "test").Connect(ctx, st, nil); err != nil {
-		t.Fatal(err)
-	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
+// The tools/list result is the public contract: any change to a name, description,
+// schema or annotation must show up in testdata/tools.golden.json (go test ./internal/server -update).
+func TestToolsListGolden(t *testing.T) {
+	res, err := connect(t, fakeRunner{`[]`}).ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	sort.Slice(res.Tools, func(i, j int) bool { return res.Tools[i].Name < res.Tools[j].Name })
+	got, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+	const path = "testdata/tools.golden.json"
+	if *update {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("tools/list differs from %s; review the change and run with -update", path)
+	}
+}
+
+func TestToolsListPins(t *testing.T) {
+	ctx := context.Background()
+	cs := connect(t, fakeRunner{`[]`})
 	res, err := cs.ListTools(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -85,17 +118,9 @@ func TestToolsListPins(t *testing.T) {
 // call runs one tool against a fake runner and also returns the script source the bridge sent.
 func call(t *testing.T, res string, name string, args map[string]any) (map[string]any, *mcp.CallToolResult, string) {
 	t.Helper()
-	ctx := context.Background()
 	r := &recRunner{res: res}
-	ct, st := mcp.NewInMemoryTransports()
-	if _, err := New(&omni.Bridge{Runner: r}, "test").Connect(ctx, st, nil); err != nil {
-		t.Fatal(err)
-	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	cs := connect(t, r)
+	out, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,25 +180,17 @@ func TestGettersMissingIDIsToolError(t *testing.T) {
 // A client may send `arguments: null`; tools with schema defaults must not crash the server.
 func TestNullArgumentsDoNotPanic(t *testing.T) {
 	ctx := context.Background()
-	ct, st := mcp.NewInMemoryTransports()
-	b := &omni.Bridge{Runner: fakeRunner{`[]`}}
-	if _, err := New(b, "test").Connect(ctx, st, nil); err != nil {
-		t.Fatal(err)
-	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cs := connect(t, fakeRunner{`[]`})
 	for _, tool := range []string{"list_tasks", "list_projects", "list_tags", "list_folders", "list_perspectives"} {
 		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: json.RawMessage("null")})
 		if err != nil || res.IsError {
 			t.Errorf("%s: err=%v res=%+v", tool, err, res)
 		}
 	}
-	// Getters require an id: a clean error is fine, a panic or hang is not.
+	// Getters require an id: null arguments must come back as an error, not a panic or hang.
 	for _, tool := range []string{"get_task", "get_project", "get_tag", "get_folder"} {
-		if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: json.RawMessage("null")}); err != nil {
-			t.Logf("%s: %v", tool, err)
+		if res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: json.RawMessage("null")}); err == nil && !res.IsError {
+			t.Errorf("%s: want error for null arguments, got %+v", tool, res)
 		}
 	}
 }
@@ -263,14 +280,7 @@ func TestDropDeleteMixedResultsOverMCP(t *testing.T) {
 
 func TestToolAnnotations(t *testing.T) {
 	ctx := context.Background()
-	ct, st := mcp.NewInMemoryTransports()
-	if _, err := New(&omni.Bridge{Runner: fakeRunner{`[]`}}, "test").Connect(ctx, st, nil); err != nil {
-		t.Fatal(err)
-	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cs := connect(t, fakeRunner{`[]`})
 	n := 0
 	for tool, err := range cs.Tools(ctx, nil) {
 		if err != nil {
