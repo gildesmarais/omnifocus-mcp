@@ -67,7 +67,7 @@ Batch tools: each takes `{items: [...]}` and returns `{results: [{id, kind, ok, 
 
 Items `{kind: task|project|tag|folder, id}`; same result shape. Guards run in the script (it alone can see the counts) and surface as that item's `error`.
 
-- `drop` — Reversible. Dropping a project drops its tasks. A tag may be dropped only when `remainingTasks == 0`.
+- `drop` — Reversible through this server only for projects and tags (edit status back to `Active`); a dropped folder (which also drops its projects) or task cannot be restored through these tools. Dropping a project drops its tasks. A tag may be dropped only when neither it nor any descendant tag has remaining tasks.
 - `delete` — Irreversible. Tags and folders only when already dropped and empty (children first). A project is deleted only without remaining (incomplete) tasks, a task only without remaining subtasks; drop it instead (a dropped project deletes).
 
 ## Architecture
