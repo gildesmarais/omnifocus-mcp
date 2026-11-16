@@ -36,6 +36,52 @@ func TestListPerspectivesOverMCP(t *testing.T) {
 	}
 }
 
+func TestToolsListPins(t *testing.T) {
+	ctx := context.Background()
+	ct, st := mcp.NewInMemoryTransports()
+	if _, err := New(&omni.Bridge{Runner: fakeRunner{"[]"}}, "test").Connect(ctx, st, nil); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := map[string]*mcp.Tool{}
+	for _, tl := range res.Tools {
+		tools[tl.Name] = tl
+	}
+	for _, name := range []string{"list_tasks", "list_projects"} {
+		raw, _ := json.Marshal(tools[name].InputSchema)
+		var sc struct {
+			Required   []string                  `json:"required"`
+			Properties map[string]map[string]any `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &sc); err != nil {
+			t.Fatal(err)
+		}
+		if d, _ := sc.Properties["limit"]["default"].(float64); d != 50 {
+			t.Errorf("%s: limit default = %v, want 50", name, sc.Properties["limit"]["default"])
+		}
+		for _, r := range sc.Required {
+			if r == "limit" {
+				t.Errorf("%s: limit must not be required", name)
+			}
+		}
+	}
+	if a := tools["list_perspectives"].Annotations; a == nil || !a.ReadOnlyHint {
+		t.Errorf("list_perspectives must be readOnly: %+v", a)
+	}
+	for _, name := range []string{"drop", "delete"} {
+		if a := tools[name].Annotations; a == nil || a.DestructiveHint == nil || !*a.DestructiveHint {
+			t.Errorf("%s must be destructive: %+v", name, a)
+		}
+	}
+}
+
 func call(t *testing.T, res string, name string, args map[string]any) (map[string]any, *mcp.CallToolResult) {
 	t.Helper()
 	ctx := context.Background()
@@ -75,8 +121,9 @@ func TestListTasksLimitDefaultAndNull(t *testing.T) {
 		t.Fatalf("default limit/flagged not sent: %s", lastSrc)
 	}
 	call(t, `[]`, "list_tasks", map[string]any{"limit": nil})
-	if !strings.Contains(lastSrc, `\"limit\":null`) {
-		t.Fatalf("null limit not sent: %s", lastSrc)
+	// null limit is dropped by omitempty; scripts treat absent like null ("all").
+	if strings.Contains(lastSrc, `\"limit\"`) {
+		t.Fatalf("null limit must not become a number: %s", lastSrc)
 	}
 }
 

@@ -84,24 +84,24 @@ type Folder struct {
 // TaskFilter holds list_tasks filters; nil/zero means "no filter".
 // Limit nil means all tasks; callers choose the default.
 type TaskFilter struct {
-	Inbox       *bool  `json:"inbox,omitempty"`
-	Project     string `json:"project,omitempty"`
-	Tag         string `json:"tag,omitempty"`
-	Available   *bool  `json:"available,omitempty"`
+	Inbox       *bool  `json:"inbox,omitempty" jsonschema:"only inbox tasks (true) or only non-inbox tasks (false)"`
+	Project     string `json:"project,omitempty" jsonschema:"project id or exact name"`
+	Tag         string `json:"tag,omitempty" jsonschema:"tag id or exact name"`
+	Available   *bool  `json:"available,omitempty" jsonschema:"true: not blocked, deferred, completed or dropped"`
 	Flagged     *bool  `json:"flagged,omitempty"`
 	Completed   *bool  `json:"completed,omitempty"`
-	DueBefore   string `json:"due_before,omitempty"`
-	DeferBefore string `json:"defer_before,omitempty"`
-	Search      string `json:"search,omitempty"`
-	Limit       *int   `json:"limit"`
+	DueBefore   string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
+	DeferBefore string `json:"defer_before,omitempty" jsonschema:"YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
+	Search      string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
+	Limit       *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
 }
 
 // ProjectFilter holds list_projects filters.
 type ProjectFilter struct {
-	Status string `json:"status,omitempty"`
-	Folder string `json:"folder,omitempty"`
-	Search string `json:"search,omitempty"`
-	Limit  *int   `json:"limit"`
+	Status string `json:"status,omitempty" jsonschema:"Active, OnHold, Done or Dropped"`
+	Folder string `json:"folder,omitempty" jsonschema:"folder id or exact name; includes subfolders"`
+	Search string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
+	Limit  *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
 }
 
 var projectStatuses = map[string]bool{"Active": true, "OnHold": true, "Done": true, "Dropped": true}

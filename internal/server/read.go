@@ -9,34 +9,16 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var readOnly = &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)}
-
-type listTasksIn struct {
-	Inbox       *bool  `json:"inbox,omitempty" jsonschema:"only inbox tasks (true) or only non-inbox tasks (false)"`
-	Project     string `json:"project,omitempty" jsonschema:"project id or exact name"`
-	Tag         string `json:"tag,omitempty" jsonschema:"tag id or exact name"`
-	Available   *bool  `json:"available,omitempty" jsonschema:"true: not blocked, deferred, completed or dropped"`
-	Flagged     *bool  `json:"flagged,omitempty"`
-	Completed   *bool  `json:"completed,omitempty"`
-	DueBefore   string `json:"due_before,omitempty" jsonschema:"YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
-	DeferBefore string `json:"defer_before,omitempty" jsonschema:"YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
-	Search      string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
-	Limit       *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
-}
-
 type listTasksOut struct {
 	Tasks []omni.Task `json:"tasks"`
 }
 
-type listProjectsIn struct {
-	Status string `json:"status,omitempty" jsonschema:"Active, OnHold, Done or Dropped"`
-	Folder string `json:"folder,omitempty" jsonschema:"folder id or exact name; includes subfolders"`
-	Search string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
-	Limit  *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
-}
-
 type listProjectsOut struct {
 	Projects []omni.Project `json:"projects"`
+}
+
+type listPerspectivesOut struct {
+	Perspectives []omni.Perspective `json:"perspectives"`
 }
 
 type noIn struct{}
@@ -64,30 +46,40 @@ func withLimitDefault[In any]() *jsonschema.Schema {
 	return sc
 }
 
+// nonNil turns a nil slice into an empty one so list output is [] not null.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
 func addReadTools(s *mcp.Server, b *omni.Bridge) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_perspectives",
+		Description: "List OmniFocus perspectives. Built-in ones have a null id and builtin=true.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noIn) (*mcp.CallToolResult, listPerspectivesOut, error) {
+		ps, err := b.Perspectives(ctx)
+		return nil, listPerspectivesOut{Perspectives: nonNil(ps)}, err
+	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_tasks",
 		Description: "List tasks. Filters are AND-combined. Limit defaults to 50; null returns all.",
 		Annotations: readOnly,
-		InputSchema: withLimitDefault[listTasksIn](),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listTasksIn) (*mcp.CallToolResult, listTasksOut, error) {
-		ts, err := b.ListTasks(ctx, omni.TaskFilter(in))
-		if ts == nil {
-			ts = []omni.Task{}
-		}
-		return nil, listTasksOut{Tasks: ts}, err
+		InputSchema: withLimitDefault[omni.TaskFilter](),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in omni.TaskFilter) (*mcp.CallToolResult, listTasksOut, error) {
+		ts, err := b.ListTasks(ctx, in)
+		return nil, listTasksOut{Tasks: nonNil(ts)}, err
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_projects",
 		Description: "List projects, optionally filtered by status, folder or search. Limit defaults to 50; null returns all.",
 		Annotations: readOnly,
-		InputSchema: withLimitDefault[listProjectsIn](),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listProjectsIn) (*mcp.CallToolResult, listProjectsOut, error) {
-		ps, err := b.ListProjects(ctx, omni.ProjectFilter(in))
-		if ps == nil {
-			ps = []omni.Project{}
-		}
-		return nil, listProjectsOut{Projects: ps}, err
+		InputSchema: withLimitDefault[omni.ProjectFilter](),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in omni.ProjectFilter) (*mcp.CallToolResult, listProjectsOut, error) {
+		ps, err := b.ListProjects(ctx, in)
+		return nil, listProjectsOut{Projects: nonNil(ps)}, err
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_tags",
@@ -95,10 +87,7 @@ func addReadTools(s *mcp.Server, b *omni.Bridge) {
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noIn) (*mcp.CallToolResult, listTagsOut, error) {
 		ts, err := b.ListTags(ctx)
-		if ts == nil {
-			ts = []omni.Tag{}
-		}
-		return nil, listTagsOut{Tags: ts}, err
+		return nil, listTagsOut{Tags: nonNil(ts)}, err
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_folders",
@@ -106,10 +95,7 @@ func addReadTools(s *mcp.Server, b *omni.Bridge) {
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noIn) (*mcp.CallToolResult, listFoldersOut, error) {
 		fs, err := b.ListFolders(ctx)
-		if fs == nil {
-			fs = []omni.Folder{}
-		}
-		return nil, listFoldersOut{Folders: fs}, err
+		return nil, listFoldersOut{Folders: nonNil(fs)}, err
 	})
 	addGet(s, "get_task", "Get one task by id; errors if not found.", b.GetTask)
 	addGet(s, "get_project", "Get one project by id; errors if not found.", b.GetProject)

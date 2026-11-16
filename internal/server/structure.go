@@ -24,8 +24,6 @@ type structOut struct {
 }
 
 func addStructureTools(s *mcp.Server, b *omni.Bridge) {
-	notDestructive := &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(false)}
-	destructive := &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(false)}
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "add",
 		Description: "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold) and sequential (project). Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
