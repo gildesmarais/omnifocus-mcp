@@ -82,7 +82,8 @@ func TestToolsListPins(t *testing.T) {
 	}
 }
 
-func call(t *testing.T, res string, name string, args map[string]any) (map[string]any, *mcp.CallToolResult) {
+// call runs one tool against a fake runner and also returns the script source the bridge sent.
+func call(t *testing.T, res string, name string, args map[string]any) (map[string]any, *mcp.CallToolResult, string) {
 	t.Helper()
 	ctx := context.Background()
 	r := &recRunner{res: res}
@@ -99,8 +100,7 @@ func call(t *testing.T, res string, name string, args map[string]any) (map[strin
 		t.Fatal(err)
 	}
 	m, _ := out.StructuredContent.(map[string]any)
-	lastSrc = r.src
-	return m, out
+	return m, out, r.src
 }
 
 type recRunner struct{ res, src string }
@@ -110,17 +110,15 @@ func (r *recRunner) Run(_ context.Context, src string) (string, error) {
 	return r.res, nil
 }
 
-var lastSrc string
-
 func TestListTasksLimitDefaultAndNull(t *testing.T) {
-	out, res := call(t, `[{"id":"a","name":"n","status":"Available","tags":[]}]`, "list_tasks", map[string]any{"flagged": true})
+	out, res, lastSrc := call(t, `[{"id":"a","name":"n","status":"Available","tags":[]}]`, "list_tasks", map[string]any{"flagged": true})
 	if res.IsError || len(out["tasks"].([]any)) != 1 {
 		t.Fatalf("%+v", res)
 	}
 	if !strings.Contains(lastSrc, `\"limit\":50`) || !strings.Contains(lastSrc, `\"flagged\":true`) {
 		t.Fatalf("default limit/flagged not sent: %s", lastSrc)
 	}
-	call(t, `[]`, "list_tasks", map[string]any{"limit": nil})
+	_, _, lastSrc = call(t, `[]`, "list_tasks", map[string]any{"limit": nil})
 	// null limit is dropped by omitempty; scripts treat absent like null ("all").
 	if strings.Contains(lastSrc, `\"limit\"`) {
 		t.Fatalf("null limit must not become a number: %s", lastSrc)
@@ -128,23 +126,27 @@ func TestListTasksLimitDefaultAndNull(t *testing.T) {
 }
 
 func TestOtherReadToolsOverMCP(t *testing.T) {
-	cases := []struct{ tool, res, key string }{
-		{"list_projects", `[{"id":"p","name":"P","status":"Active","tags":[]}]`, "projects"},
-		{"list_tags", `[{"id":"t","name":"T","status":"Active","remainingTasks":1}]`, "tags"},
-		{"list_folders", `[{"id":"f","name":"F","status":"Active"}]`, "folders"},
+	out, res, src := call(t, `[{"id":"p","name":"P","status":"OnHold","tags":[]}]`, "list_projects", map[string]any{"status": "OnHold", "folder": "F"})
+	if res.IsError || len(out["projects"].([]any)) != 1 {
+		t.Fatalf("list_projects: %+v", res)
 	}
-	for _, c := range cases {
-		out, res := call(t, c.res, c.tool, map[string]any{})
-		if res.IsError || len(out[c.key].([]any)) != 1 {
-			t.Errorf("%s: %+v", c.tool, res)
-		}
+	if !strings.Contains(src, `\"status\":\"OnHold\"`) || !strings.Contains(src, `\"folder\":\"F\"`) {
+		t.Fatalf("status/folder not forwarded: %s", src)
 	}
+	out, res, _ = call(t, `[{"id":"t","name":"T","status":"Active","remainingTasks":4}]`, "list_tags", map[string]any{})
+	if res.IsError || out["tags"].([]any)[0].(map[string]any)["remainingTasks"] != float64(4) {
+		t.Fatalf("list_tags: %+v", res)
+	}
+	out, res, _ = call(t, `[{"id":"f","name":"F","status":"Active"}]`, "list_folders", map[string]any{})
+	if res.IsError || len(out["folders"].([]any)) != 1 {
+		t.Fatalf("list_folders: %+v", res)
+	}
+}
+
+// Decoding and ErrNotFound live in omni; here only the error mapping over MCP.
+func TestGettersMissingIDIsToolError(t *testing.T) {
 	for _, tool := range []string{"get_task", "get_project", "get_tag", "get_folder"} {
-		out, res := call(t, `[{"id":"x1","name":"N","status":"Active","tags":[]}]`, tool, map[string]any{"id": "x1"})
-		if res.IsError || out["id"] != "x1" {
-			t.Errorf("%s: %+v", tool, res)
-		}
-		if _, res := call(t, `[]`, tool, map[string]any{"id": "nope"}); !res.IsError {
+		if _, res, _ := call(t, `[]`, tool, map[string]any{"id": "nope"}); !res.IsError {
 			t.Errorf("%s: want error for missing id", tool)
 		}
 	}
@@ -162,17 +164,23 @@ func TestNullArgumentsDoNotPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"list_tasks", "list_projects", "list_tags", "list_perspectives"} {
+	for _, tool := range []string{"list_tasks", "list_projects", "list_tags", "list_folders", "list_perspectives"} {
 		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: json.RawMessage("null")})
 		if err != nil || res.IsError {
 			t.Errorf("%s: err=%v res=%+v", tool, err, res)
+		}
+	}
+	// Getters require an id: a clean error is fine, a panic or hang is not.
+	for _, tool := range []string{"get_task", "get_project", "get_tag", "get_folder"} {
+		if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: json.RawMessage("null")}); err != nil {
+			t.Logf("%s: %v", tool, err)
 		}
 	}
 }
 
 func TestEditTasksOverMCP(t *testing.T) {
 	res := `[{"id":"a","ok":true,"task":{"id":"a","name":"N","status":"Available","tags":[]}}]`
-	out, r := call(t, res, "edit_tasks", map[string]any{"patches": []any{map[string]any{"id": "a", "defer": nil, "flagged": true}}})
+	out, r, lastSrc := call(t, res, "edit_tasks", map[string]any{"patches": []any{map[string]any{"id": "a", "defer": nil, "flagged": true}}})
 	if r.IsError {
 		t.Fatalf("%+v", r)
 	}
@@ -183,14 +191,26 @@ func TestEditTasksOverMCP(t *testing.T) {
 	if !strings.Contains(lastSrc, `\"defer\":null`) {
 		t.Fatalf("null defer not forwarded: %s", lastSrc)
 	}
-	if _, r := call(t, `[{"id":"n","ok":true}]`, "add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "x"}}}); r.IsError {
+}
+
+func TestAddTasksOverMCP(t *testing.T) {
+	res := `[{"id":"n","ok":true,"task":{"id":"n","name":"Buy milk","status":"Available","tags":[]}}]`
+	out, r, src := call(t, res, "add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "Buy milk", "project": "p1", "due": "2026-11-20"}}})
+	if r.IsError {
 		t.Fatalf("add_tasks: %+v", r)
+	}
+	task := out["results"].([]any)[0].(map[string]any)["task"].(map[string]any)
+	if task["name"] != "Buy milk" {
+		t.Fatalf("task not decoded: %v", out)
+	}
+	if !strings.Contains(src, `\"project\":\"p1\"`) || !strings.Contains(src, `\"due\":\"2026-11-20\"`) {
+		t.Fatalf("project/due not forwarded: %s", src)
 	}
 }
 
 func TestStructureToolsOverMCP(t *testing.T) {
 	res := `[{"id":"a","kind":"tag","ok":true,"name":"T","status":"Active"}]`
-	out, r := call(t, res, "edit", map[string]any{"items": []any{map[string]any{"kind": "tag", "id": "a", "move": map[string]any{"parent": nil}}}})
+	out, r, lastSrc := call(t, res, "edit", map[string]any{"items": []any{map[string]any{"kind": "tag", "id": "a", "move": map[string]any{"parent": nil}}}})
 	if r.IsError || out["results"].([]any)[0].(map[string]any)["ok"] != true {
 		t.Fatalf("edit: %+v", r)
 	}
@@ -198,12 +218,45 @@ func TestStructureToolsOverMCP(t *testing.T) {
 		t.Fatalf("root move not forwarded: %s", lastSrc)
 	}
 	for tool, args := range map[string]map[string]any{
-		"add":    {"items": []any{map[string]any{"kind": "tag", "name": "x"}}},
-		"drop":   {"items": []any{map[string]any{"kind": "tag", "id": "a"}}},
-		"delete": {"items": []any{map[string]any{"kind": "tag", "id": "a"}}},
+		"add": {"items": []any{map[string]any{"kind": "tag", "name": "x"}}},
 	} {
-		if _, r := call(t, res, tool, args); r.IsError {
+		if _, r, _ := call(t, res, tool, args); r.IsError {
 			t.Errorf("%s: %+v", tool, r)
+		}
+	}
+}
+
+func TestAddStructureProjectOverMCP(t *testing.T) {
+	res := `[{"id":"n","kind":"project","ok":true,"name":"P","status":"OnHold","parent":{"id":"f1","name":"Top"}}]`
+	out, r, src := call(t, res, "add", map[string]any{"items": []any{map[string]any{"kind": "project", "name": "P", "parent": "f1", "sequential": true, "status": "OnHold"}}})
+	if r.IsError {
+		t.Fatalf("add: %+v", r)
+	}
+	for _, want := range []string{`\"parent\":\"f1\"`, `\"sequential\":true`, `\"status\":\"OnHold\"`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("source lacks %s: %s", want, src)
+		}
+	}
+	got := out["results"].([]any)[0].(map[string]any)
+	if got["status"] != "OnHold" || got["parent"].(map[string]any)["name"] != "Top" {
+		t.Fatalf("envelope: %v", got)
+	}
+}
+
+// drop and delete keep per-item outcomes: a guard refusal on one item must not hide the other.
+func TestDropDeleteMixedResultsOverMCP(t *testing.T) {
+	res := `[{"id":"a","kind":"tag","ok":true,"name":"T","status":"Dropped"},{"id":"b","kind":"project","ok":false,"error":"project has 2 remaining task(s)"}]`
+	items := []any{map[string]any{"kind": "tag", "id": "a"}, map[string]any{"kind": "project", "id": "b"}}
+	for _, tool := range []string{"drop", "delete"} {
+		out, r, _ := call(t, res, tool, map[string]any{"items": items})
+		if r.IsError {
+			t.Fatalf("%s: %+v", tool, r)
+		}
+		rs := out["results"].([]any)
+		first, second := rs[0].(map[string]any), rs[1].(map[string]any)
+		if len(rs) != 2 || first["id"] != "a" || first["ok"] != true || second["id"] != "b" || second["ok"] != false ||
+			second["kind"] != "project" || !strings.Contains(second["error"].(string), "remaining") {
+			t.Errorf("%s: %v", tool, rs)
 		}
 	}
 }
