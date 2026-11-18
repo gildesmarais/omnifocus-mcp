@@ -56,10 +56,12 @@ const projectType = p => p.containsSingletonActions ? "SingleActions" : p.sequen
 // Writes both flags so the type reads back whatever they were.
 const setProjectType = (p, type) => { p.sequential = type === "Sequential"; p.containsSingletonActions = type === "SingleActions"; };
 const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
+// Throws "<what> not found" for a missing lookup result, else returns it.
+const need = (o, what) => { if (!o) throw new Error(what + " not found"); return o; };
+const tagsOf = ids => (ids || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
 // Validates the project fields of an add or edit item and looks up its tags before any mutation, then returns the function applying them.
 // Absent keys are untouched and null clears, so add (keys only when set) and edit share it; tagsAdd/tagsRemove are tag ids.
 const projectWriter = (p, tagsAdd, tagsRemove) => {
-  const tagsOf = ids => (ids || []).map(id => { const g = Tag.byIdentifier(id); if (!g) throw new Error("tag " + id + " not found"); return g; });
   const add = tagsOf(tagsAdd), rem = tagsOf(tagsRemove);
   const rule = has(p, "repetition") && p.repetition !== null ? makeRule(p.repetition) : null;
   const date = (k, set) => { if (has(p, k)) set(p[k] === null ? null : parseDate(p[k])); };

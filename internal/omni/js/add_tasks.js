@@ -1,12 +1,11 @@
 (function (args) {
   // args.items: validated additions. One result per item; a failing item never aborts the batch.
-  const need = (o, what) => { if (!o) throw new Error(what + " not found"); return o; };
   return args.items.map(a => {
     try {
       let pos = inbox.ending;
       if (a.project) pos = need(Project.byIdentifier(a.project), "project").ending;
       else if (a.parent) pos = findTask(a.parent, "parent task").ending;
-      const tags = (a.tags || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
+      const tags = tagsOf(a.tags);
       const rule = a.repetition ? makeRule(a.repetition) : null;
       const t = new Task(a.name, pos);
       if (a.note) t.note = a.note;

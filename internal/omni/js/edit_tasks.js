@@ -1,8 +1,6 @@
 (function (args) {
   // args.items: validated patches. Lookups run before any mutation so a bad
   // target leaves the task untouched; one result per item, failures never abort the batch.
-  const need = (o, what) => { if (!o) throw new Error(what + " not found"); return o; };
-  const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
   const date = (p, k, set) => { if (has(p, k)) set(p[k] === null ? null : parseDate(p[k])); };
   return args.items.map(p => {
     try {
@@ -17,7 +15,6 @@
           pos = par.ending;
         }
       }
-      const tagsOf = ids => (ids || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
       const add = tagsOf(p.tagsAdd), rem = tagsOf(p.tagsRemove);
       const rule = has(p, "repetition") && p.repetition !== null ? makeRule(p.repetition) : null;
       if (pos) moveTasks([t], pos);
