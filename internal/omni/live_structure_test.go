@@ -62,7 +62,7 @@ func TestLiveStructureWrites(t *testing.T) {
 	track("tag", parentTag.ID)
 	childTag := add(StructAdd{Kind: "tag", Name: "mcp-test-child-" + suffix, Parent: parentTag.ID})
 	track("tag", childTag.ID)
-	proj := add(StructAdd{Kind: "project", Name: "mcp-test-proj-" + suffix, Parent: folder.ID, Type: "Sequential"})
+	proj := add(StructAdd{Kind: "project", Name: "mcp-test-proj-" + suffix, Parent: folder.ID, Type: new("Sequential")})
 	track("project", proj.ID)
 
 	if g, err := b.GetTag(ctx, childTag.ID); err != nil || g.Parent == nil || g.Parent.ID != parentTag.ID {
@@ -326,7 +326,7 @@ func TestLiveProjectReview(t *testing.T) {
 	}
 
 	now := time.Now()
-	edit(StructEdit{Reviewed: true})
+	edit(StructEdit{Reviewed: new(true)})
 	p := get()
 	if want := midnight(now.AddDate(0, 0, 14)); p.NextReview != want {
 		t.Fatalf("nextReviewDate after reviewed: got %q want %q", p.NextReview, want)
@@ -335,7 +335,7 @@ func TestLiveProjectReview(t *testing.T) {
 		t.Fatalf("lastReviewDate: %q", p.LastReview)
 	}
 
-	edit(StructEdit{NextReviewDate: "2030-01-15T13:45:00"})
+	edit(StructEdit{NextReviewDate: new("2030-01-15T13:45:00")})
 	if got := get().NextReview; got != "2030-01-15T00:00:00" {
 		t.Fatalf("nextReviewDate truncates to midnight: got %q", got)
 	}
@@ -413,7 +413,7 @@ func TestLiveProjectWrites(t *testing.T) {
 
 	// every type reads back as written, from add and across edits (both flags are written)
 	for _, typ := range projectTypes {
-		id := add(StructAdd{Kind: "project", Name: "mcp-test-type-" + typ + "-" + suffix, Parent: folder, Type: typ})
+		id := add(StructAdd{Kind: "project", Name: "mcp-test-type-" + typ + "-" + suffix, Parent: folder, Type: new(typ)})
 		if p := get(id); p.Type != typ {
 			t.Fatalf("add type %s read back %s", typ, p.Type)
 		}
@@ -423,7 +423,7 @@ func TestLiveProjectWrites(t *testing.T) {
 		t.Fatalf("default project: %+v", p)
 	}
 	for _, typ := range []string{"SingleActions", "Sequential", "Parallel", "SingleActions", "Parallel"} {
-		edit(StructEdit{Kind: "project", ID: id, Type: typ})
+		edit(StructEdit{Kind: "project", ID: id, Type: new(typ)})
 		if p := get(id); p.Type != typ {
 			t.Fatalf("edit type %s read back %s", typ, p.Type)
 		}
@@ -432,9 +432,9 @@ func TestLiveProjectWrites(t *testing.T) {
 	// every field on add
 	rep := &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}
 	full := add(StructAdd{Kind: "project", Name: "mcp-test-full-" + suffix, Parent: folder,
-		Type: "Sequential", Note: "first note", Flagged: true,
-		Defer: "2030-03-01T08:00:00", Due: "2030-03-04T17:30:00", Planned: "2030-03-02T09:00:00",
-		Tags: []string{tag}, EstimatedMinutes: new(30), Repetition: rep, CompletedByChildren: true})
+		Type: new("Sequential"), Note: new("first note"), Flagged: new(true),
+		Defer: new("2030-03-01T08:00:00"), Due: new("2030-03-04T17:30:00"), Planned: new("2030-03-02T09:00:00"),
+		Tags: []string{tag}, EstimatedMinutes: new(30), Repetition: rep, CompletedByChildren: new(true)})
 	p := get(full)
 	if p.Type != "Sequential" || p.Note != "first note" || !p.Flagged || p.Defer != "2030-03-01T08:00:00" || p.Due != "2030-03-04T17:30:00" || p.Planned != "2030-03-02T09:00:00" ||
 		!hasTag(p, tag) || p.EstimatedMinutes == nil || *p.EstimatedMinutes != 30 || p.Repetition == nil || *p.Repetition != *rep || !p.CompletedByChildren {
@@ -444,7 +444,7 @@ func TestLiveProjectWrites(t *testing.T) {
 	// edit: replace every value, remove the tag
 	rep2 := &Repetition{Rule: "FREQ=DAILY;INTERVAL=2", ScheduleType: "FromCompletion", Anchor: "DeferDate"}
 	edit(StructEdit{Kind: "project", ID: full,
-		Type: "SingleActions", Note: NullableString{Set: true, Value: "second note"}, Flagged: new(false),
+		Type: new("SingleActions"), Note: NullableString{Set: true, Value: "second note"}, Flagged: new(false),
 		Defer:            NullableString{Set: true, Value: "2030-04-01T08:00:00"},
 		Due:              NullableString{Set: true, Value: "2030-04-04"},
 		Planned:          NullableString{Set: true, Value: "2030-04-02T09:00:00"},
