@@ -12,7 +12,7 @@ import (
 func TestScriptGuardsPresent(t *testing.T) {
 	src := func(name string) string { return mustRead("js/" + name + ".js") }
 	for name, wants := range map[string][]string{
-		"prelude": {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`,
+		"prelude": {"d => !!d && (!lo || d >= lo) && (!hi || d < hi)", "containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`,
 			"Task.RepetitionRule(r.rule, null, st, an, r.catchUp)", "Task.RepetitionScheduleType[r.scheduleType]", "Task.AnchorDateKey[r.anchor]",
 			"scheduleType: statusName(r.scheduleType)", "anchor: statusName(r.anchorDateKey)", "catchUp: r.catchUpAutomatically",
 			`dropped: st === "Dropped"`, "hasChildren: t.hasChildren", "completedByChildren: t.completedByChildren", "added: iso(t.added)", "modified: iso(t.modified)", "iso(t.dropDate)",
@@ -21,12 +21,13 @@ func TestScriptGuardsPresent(t *testing.T) {
 			"o.repetitionRule = rule", "o.completedByChildren = p.completedByChildren", "o.addTag(g)", "o.removeTag(g)", "makeRule(p.repetition)", "withEstimateRepetition = ", "shapeRepetition(rr)"},
 		scriptEditTasks.name: {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)",
 			"t.active = true", "t.repetitionRule = rule", "t.estimatedMinutes = p.estimatedMinutes", "t.sequential = p.sequential", "t.completedByChildren = p.completedByChildren"},
-		scriptAddTasks.name:      {`findTask(a.parent, "parent task")`, "makeRule(a.repetition)", "t.estimatedMinutes = a.estimatedMinutes", "t.repetitionRule = rule", "t.sequential = true", "t.completedByChildren = true"},
-		scriptTasks.name:         {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)"},
+		scriptAddTasks.name: {`findTask(a.parent, "parent task")`, "makeRule(a.repetition)", "t.estimatedMinutes = a.estimatedMinutes", "t.repetitionRule = rule", "t.sequential = true", "t.completedByChildren = true"},
+		scriptTasks.name: {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)", "t.completionDate", "t.plannedDate", "t.modified", "t.added",
+			"(t.tags.length === 0) !== args.untagged", "!!t.repetitionRule !== args.repeating", `(st === "Dropped") !== args.dropped`, "OK.has(st) !== args.available"},
 		scriptDelete.name:        {"o.flattenedTasks", "o.flattenedChildren", "remaining(", "drop it instead"},
 		scriptEditStructure.name: {"o.reviewInterval = r", "o.lastReviewDate = new Date()", "o.nextReviewDate = parseDate(", "projectWriter(p, p.tags && p.tags.add, p.tags && p.tags.remove)", "byKind[p.kind].Status[p.status]", "if (write) write(o)"},
 		scriptAddStructure.name:  {"projectWriter(a, a.tags, [])", "byKind[a.kind].Status[a.status]", "if (write) write(o)"},
-		scriptProjects.name:      {"p.reviewInterval", "p.nextReviewDate <= reviewDue", "type: projectType(p)", "completedByChildren: p.completedByChildren", "withEstimateRepetition(withDates(o, p), p)"},
+		scriptProjects.name:      {"p.reviewInterval", `dateBounds(args, "review_due")`, "reviewDue(p.nextReviewDate)", "type: projectType(p)", "completedByChildren: p.completedByChildren", "withEstimateRepetition(withDates(o, p), p)"},
 		scriptDrop.name:          {"flattenedTags", "inside(o, g)", "remaining task(s)"},
 	} {
 		for _, w := range wants {

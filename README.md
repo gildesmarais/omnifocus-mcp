@@ -68,7 +68,7 @@ Example prompts: "What's flagged and due this week?", "Add these five tasks to t
 Conventions:
 
 - Ids are OmniFocus `primaryKey` strings.
-- Dates are ISO 8601 strings: `2026-11-18`, `2026-11-18T08:00:00`, or with an offset (`2026-11-18T08:00:00Z`, `...+01:00`). No offset means local time. A date-only value means 00:00 local time. Returned dates are local time without an offset.
+- Dates are ISO 8601 strings: `2026-11-18`, `2026-11-18T08:00:00`, or with an offset (`2026-11-18T08:00:00Z`, `...+01:00`). No offset means local time. A date-only value means 00:00 local time when written; as a filter bound it covers its whole day (see `list_tasks`). Returned dates are local time without an offset.
 - In patches, an omitted field means unchanged and an explicit `null` clears (dates, note, `estimatedMinutes`, `repetition`).
 - Batch tools apply items in order and return one result per item (`ok` or `error`). One failing item never aborts the batch.
 - Invalid input is rejected before any script runs.
@@ -81,9 +81,12 @@ Getters are per type (`get_task`, `get_project`, `get_tag`, `get_folder`) rather
   - `inbox` (bool; includes nested inbox tasks; can't be combined with `project`)
   - `project`, `tag` (id or name)
   - `available` (bool: not blocked, deferred, completed or dropped), `flagged`, `completed` (bool)
-  - `due_before`, `defer_before` (dates)
+  - `untagged` (no tags), `repeating` (has a repetition rule), `dropped` (bools: `true` returns only those, `false` excludes them)
+  - Range filters (dates), each on one date: `due_before`, `due_after`, `defer_before`, `defer_after`, `planned_before`, `planned_after`, `completed_before`, `completed_after` (the completion date), `modified_after`, `added_after`. `_before` means on or before and `_after` on or after. A date-only value covers its whole local day: as a `_before` bound it ends at 23:59:59 that day, as an `_after` bound it starts at 00:00:00. A task without that date never matches a bound on it. `review_due_before` on `list_projects` follows the same rule.
   - `search` (substring over name and note)
   - `limit` (default 50; `null` means all)
+
+  `list_tasks` hides nothing by default: completed and dropped tasks are returned too, so the `completed_*` bounds and `dropped: true` find them without any extra switch. Contradictory filters are rejected before any script runs: an `_after` later than its `_before`, `completed: false` with a `completed_*` bound, `dropped: true` with `completed: true` or a `completed_*` bound, and `available: true` with `completed: true`, a `completed_*` bound or `dropped: true`.
 
   Each task has id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed and status. It also has:
   - `hasChildren`, `sequential` (subtasks run in order) and `completedByChildren` (completes with its last subtask), always present.

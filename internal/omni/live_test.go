@@ -136,3 +136,167 @@ func TestLiveReads(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+// Read-only. Checks every list_tasks filter against an oracle computed in Go
+// from the unfiltered list, so the script's bound and flag logic is pinned on
+// the real database. Pivots come from existing data; a field with no dates is skipped.
+func TestLiveTaskFilters(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	all, err := b.ListTasks(ctx, TaskFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := func(ts []Task) []string {
+		out := make([]string, len(ts))
+		for i, x := range ts {
+			out[i] = x.ID
+		}
+		return out
+	}
+	// check lists with f and requires exactly the tasks of all satisfying keep, in order.
+	check := func(name string, f TaskFilter, keep func(Task) bool) []Task {
+		t.Helper()
+		got, err := b.ListTasks(ctx, f)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var want []Task
+		for _, x := range all {
+			if keep(x) {
+				want = append(want, x)
+			}
+		}
+		if !slices.Equal(ids(got), ids(want)) {
+			t.Errorf("%s: got %d tasks, want %d", name, len(got), len(want))
+		}
+		t.Logf("%-28s count=%d", name, len(got))
+		return got
+	}
+
+	yes, no := true, false
+	check("untagged", TaskFilter{Untagged: &yes}, func(x Task) bool { return len(x.Tags) == 0 })
+	check("tagged", TaskFilter{Untagged: &no}, func(x Task) bool { return len(x.Tags) > 0 })
+	check("repeating", TaskFilter{Repeating: &yes}, func(x Task) bool { return x.Repetition != nil })
+	check("not repeating", TaskFilter{Repeating: &no}, func(x Task) bool { return x.Repetition == nil })
+	check("dropped", TaskFilter{Dropped: &yes}, func(x Task) bool { return x.Dropped })
+	check("not dropped", TaskFilter{Dropped: &no}, func(x Task) bool { return !x.Dropped })
+	check("completed", TaskFilter{Completed: &yes}, func(x Task) bool { return x.Completed })
+	for _, x := range all {
+		if x.Completed && x.Dropped {
+			t.Fatalf("task %s is completed and dropped; the contradiction check assumes they are disjoint", x.ID)
+		}
+	}
+
+	fields := []struct {
+		name string
+		get  func(Task) string
+	}{
+		{"due", func(x Task) string { return x.Due }},
+		{"defer", func(x Task) string { return x.Defer }},
+		{"planned", func(x Task) string { return x.Planned }},
+		{"completed", func(x Task) string { return x.CompletedAt }},
+		{"modified", func(x Task) string { return x.Modified }},
+		{"added", func(x Task) string { return x.Added }},
+	}
+	const startOfDay, endOfDay = "T00:00:00", "T23:59:59"
+	for _, fld := range fields {
+		var vals []string
+		for _, x := range all {
+			if v := fld.get(x); v != "" {
+				vals = append(vals, v)
+			}
+		}
+		if len(vals) == 0 {
+			t.Logf("%s: no task has this date, skipped", fld.name)
+			continue
+		}
+		slices.Sort(vals)
+		pivot := vals[len(vals)/2]
+		day := pivot[:10]
+		for _, w := range dateWire {
+			if !strings.HasPrefix(w.key, fld.name+"_") {
+				continue
+			}
+			for _, bound := range []string{pivot, day} {
+				lo, hi := bound, bound
+				if len(bound) == 10 {
+					lo, hi = bound+startOfDay, bound+endOfDay
+				}
+				var f TaskFilter
+				w.set(&f, bound)
+				keep := func(x Task) bool {
+					v := fld.get(x)
+					if w.end {
+						return v != "" && v <= hi
+					}
+					return v != "" && v >= lo
+				}
+				got := check(w.key+"="+bound, f, keep)
+				if len(got) == 0 {
+					t.Errorf("%s=%s: the pivot task itself must match (bounds are inclusive)", w.key, bound)
+				}
+				for _, x := range got {
+					if fld.get(x) == "" {
+						t.Errorf("%s=%s: task %s has no such date and must not match", w.key, bound, x.ID)
+					}
+				}
+			}
+		}
+	}
+
+	// The completed_* bounds find completed tasks with completed unset, and only those.
+	if latest := slices.MaxFunc(all, func(a, b Task) int { return strings.Compare(a.CompletedAt, b.CompletedAt) }); latest.CompletedAt != "" {
+		got := check("completed_after=latest", TaskFilter{CompletedAfter: latest.CompletedAt}, func(x Task) bool { return x.CompletedAt >= latest.CompletedAt && x.CompletedAt != "" })
+		for _, x := range got {
+			if !x.Completed || x.Dropped {
+				t.Errorf("task %s from a completed bound is not completed", x.ID)
+			}
+		}
+	}
+	week := time.Now().AddDate(0, 0, -7).Format("2006-01-02T15:04:05")
+	for _, x := range check("completed_after=7d ago", TaskFilter{CompletedAfter: week}, func(x Task) bool { return x.CompletedAt != "" && x.CompletedAt >= week }) {
+		if x.CompletedAt < week {
+			t.Errorf("task %s completed %s, before %s", x.ID, x.CompletedAt, week)
+		}
+	}
+
+	// review_due_before follows the same rule on projects: a date-only value covers its whole day.
+	ps, err := b.ListProjects(ctx, ProjectFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range ps {
+		if p.NextReview == "" {
+			continue
+		}
+		day := p.NextReview[:10]
+		prev, _ := time.Parse("2006-01-02", day)
+		for _, d := range []string{day, prev.AddDate(0, 0, -1).Format("2006-01-02")} {
+			got, err := b.ListProjects(ctx, ProjectFilter{ReviewDueBefore: d})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want []string
+			for _, q := range ps {
+				if q.NextReview != "" && q.NextReview <= d+endOfDay {
+					want = append(want, q.ID)
+				}
+			}
+			var have []string
+			for _, q := range got {
+				have = append(have, q.ID)
+			}
+			if !slices.Equal(have, want) {
+				t.Errorf("review_due_before=%s: got %d projects, want %d", d, len(have), len(want))
+			}
+			if d == day && !slices.Contains(have, p.ID) {
+				t.Errorf("review_due_before=%s must include the project due that day (%s)", d, p.NextReview)
+			}
+			if d != day && slices.Contains(have, p.ID) {
+				t.Errorf("review_due_before=%s must exclude the project due the next day", d)
+			}
+		}
+		break
+	}
+}

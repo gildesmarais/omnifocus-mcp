@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 type captureRunner struct {
@@ -111,11 +112,212 @@ func TestCheckEstimate(t *testing.T) {
 }
 
 func TestListTasksRejectsBadInput(t *testing.T) {
-	b := &Bridge{Runner: &captureRunner{res: `[]`}}
+	r := &captureRunner{res: `[]`}
+	b := &Bridge{Runner: r}
 	neg := -1
-	for _, f := range []TaskFilter{{DueBefore: "tomorrow"}, {DeferBefore: "2026-13-01"}, {Limit: &neg}} {
+	for _, f := range []TaskFilter{
+		{DueBefore: "tomorrow"}, {DeferBefore: "2026-13-01"}, {Limit: &neg},
+		{DueAfter: "x"}, {DeferAfter: "x"}, {PlannedBefore: "x"}, {PlannedAfter: "x"},
+		{CompletedBefore: "x"}, {CompletedAfter: "x"}, {ModifiedAfter: "x"}, {AddedAfter: "x"},
+	} {
 		if _, err := b.ListTasks(context.Background(), f); err == nil {
 			t.Errorf("%+v: want error", f)
+		}
+	}
+	if r.src != "" {
+		t.Fatalf("a script ran for invalid input: %s", r.src)
+	}
+}
+
+func TestCheckLimit(t *testing.T) {
+	zero, neg := 0, -1
+	if err := checkLimit(&zero); err != nil {
+		t.Errorf("limit 0 is valid: %v", err)
+	}
+	if err := checkLimit(nil); err != nil {
+		t.Errorf("nil limit is valid: %v", err)
+	}
+	if err := checkLimit(&neg); err == nil {
+		t.Error("negative limit must be rejected")
+	}
+}
+
+func TestResolveBound(t *testing.T) {
+	for name, tc := range map[string]struct {
+		in   string
+		end  bool
+		want string
+	}{
+		"date-only after is the start of the day": {"2026-11-18", false, "2026-11-18T00:00:00"},
+		"date-only before is the end of the day":  {"2026-11-18", true, "2026-11-18T23:59:59"},
+		"local time stays (after)":                {"2026-11-18T08:30:00", false, "2026-11-18T08:30:00"},
+		"local time stays (before)":               {"2026-11-18T08:30:00", true, "2026-11-18T08:30:00"},
+		"offset stays":                            {"2026-11-18T08:30:00+01:00", true, "2026-11-18T08:30:00+01:00"},
+		"Z stays":                                 {"2026-11-18T08:30:00Z", false, "2026-11-18T08:30:00Z"},
+		"empty stays empty":                       {"", true, ""},
+	} {
+		s := tc.in
+		if _, err := resolveBound("x", &s, tc.end); err != nil || s != tc.want {
+			t.Errorf("%s: got %q err %v, want %q", name, s, err, tc.want)
+		}
+	}
+	if _, err := resolveBound("x", nil, true); err != nil {
+		t.Errorf("nil bound is absent: %v", err)
+	}
+	bad := "2026-11-18 08:00"
+	if _, err := resolveBound("x_before", &bad, true); err == nil || !strings.Contains(err.Error(), "x_before") || bad != "2026-11-18 08:00" {
+		t.Errorf("bad date: want error naming the field and no rewrite, got %v %q", err, bad)
+	}
+	var none string
+	if got, _ := resolveBound("x", &none, false); !got.IsZero() {
+		t.Error("empty bound resolves to the zero time")
+	}
+	from, to := "2026-11-18", "2026-11-18"
+	start, _ := resolveBound("x", &from, false)
+	end, _ := resolveBound("x", &to, true)
+	if got := end.Sub(start); got != 24*time.Hour-time.Second {
+		t.Errorf("a day spans start..end of the same local day, got %s", got)
+	}
+}
+
+func TestResolveRange(t *testing.T) {
+	for name, tc := range map[string]struct {
+		after, before string
+		ok            bool
+	}{
+		"same date-only day covers the day":  {"2026-11-18", "2026-11-18", true},
+		"after the day before":               {"2026-11-17", "2026-11-18", true},
+		"after later day":                    {"2026-11-19", "2026-11-18", false},
+		"after is the last second of before": {"2026-11-18T23:59:59", "2026-11-18", true},
+		"one second later":                   {"2026-11-19T00:00:00", "2026-11-18", false},
+		"timestamps in order":                {"2026-11-18T08:00:00", "2026-11-18T09:00:00", true},
+		"timestamps reversed":                {"2026-11-18T09:00:00", "2026-11-18T08:00:00", false},
+		"equal timestamps":                   {"2026-11-18T08:00:00", "2026-11-18T08:00:00", true},
+		"offsets compared as instants":       {"2026-11-18T12:00:00Z", "2026-11-18T12:30:00+01:00", false},
+		"offsets in order":                   {"2026-11-18T11:00:00Z", "2026-11-18T12:30:00+01:00", true},
+		"only after":                         {"2030-01-01", "", true},
+		"only before":                        {"", "2000-01-01", true},
+	} {
+		a, b := tc.after, tc.before
+		err := resolveRange("due", &a, &b)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: ok=%v, err %v", name, tc.ok, err)
+		}
+		if err != nil && !tc.ok && !strings.Contains(err.Error(), "due_after") {
+			t.Errorf("%s: error should name the fields: %v", name, err)
+		}
+	}
+	after := "2026-11-18"
+	if err := resolveRange("added", &after, nil); err != nil || after != "2026-11-18T00:00:00" {
+		t.Errorf("nil before: %v %q", err, after)
+	}
+}
+
+// dateWire is every date bound of list_tasks and the key it travels under.
+var dateWire = []struct {
+	key string
+	set func(*TaskFilter, string)
+	end bool // a _before bound
+}{
+	{"due_before", func(f *TaskFilter, s string) { f.DueBefore = s }, true},
+	{"due_after", func(f *TaskFilter, s string) { f.DueAfter = s }, false},
+	{"defer_before", func(f *TaskFilter, s string) { f.DeferBefore = s }, true},
+	{"defer_after", func(f *TaskFilter, s string) { f.DeferAfter = s }, false},
+	{"planned_before", func(f *TaskFilter, s string) { f.PlannedBefore = s }, true},
+	{"planned_after", func(f *TaskFilter, s string) { f.PlannedAfter = s }, false},
+	{"completed_before", func(f *TaskFilter, s string) { f.CompletedBefore = s }, true},
+	{"completed_after", func(f *TaskFilter, s string) { f.CompletedAfter = s }, false},
+	{"modified_after", func(f *TaskFilter, s string) { f.ModifiedAfter = s }, false},
+	{"added_after", func(f *TaskFilter, s string) { f.AddedAfter = s }, false},
+}
+
+func TestListTasksSendsResolvedBounds(t *testing.T) {
+	for _, w := range dateWire {
+		clock := "T00:00:00"
+		if w.end {
+			clock = "T23:59:59"
+		}
+		for in, want := range map[string]string{"2026-11-18": "2026-11-18" + clock, "2026-11-18T08:30:00": "2026-11-18T08:30:00", "2026-11-18T08:30:00+01:00": "2026-11-18T08:30:00+01:00"} {
+			r := &captureRunner{res: `[]`}
+			var f TaskFilter
+			w.set(&f, in)
+			if _, err := (&Bridge{Runner: r}).ListTasks(context.Background(), f); err != nil {
+				t.Fatalf("%s=%s: %v", w.key, in, err)
+			}
+			if !strings.Contains(r.src, `\"`+w.key+`\":\"`+want+`\"`) {
+				t.Errorf("%s=%s: want %s on the wire: %s", w.key, in, want, r.src)
+			}
+		}
+	}
+}
+
+func TestListTasksSendsFlagFilters(t *testing.T) {
+	yes, no := true, false
+	for name, tc := range map[string]struct {
+		f    TaskFilter
+		want string
+	}{
+		"untagged":        {TaskFilter{Untagged: &yes}, `\"untagged\":true`},
+		"tagged":          {TaskFilter{Untagged: &no}, `\"untagged\":false`},
+		"repeating":       {TaskFilter{Repeating: &yes}, `\"repeating\":true`},
+		"not repeating":   {TaskFilter{Repeating: &no}, `\"repeating\":false`},
+		"dropped":         {TaskFilter{Dropped: &yes}, `\"dropped\":true`},
+		"not dropped":     {TaskFilter{Dropped: &no}, `\"dropped\":false`},
+		"completed false": {TaskFilter{Completed: &no, DueAfter: "2026-11-18"}, `\"completed\":false`},
+	} {
+		r := &captureRunner{res: `[]`}
+		if _, err := (&Bridge{Runner: r}).ListTasks(context.Background(), tc.f); err != nil || !strings.Contains(r.src, tc.want) {
+			t.Errorf("%s: want %s, err %v, src %s", name, tc.want, err, r.src)
+		}
+	}
+	r := &captureRunner{res: `[]`}
+	if _, err := (&Bridge{Runner: r}).ListTasks(context.Background(), TaskFilter{}); err != nil {
+		t.Fatal(err)
+	}
+	args := r.src[strings.LastIndex(r.src, "JSON.parse("):] // the script body also names every filter
+	for _, k := range []string{"untagged", "repeating", "dropped", "_after", "_before"} {
+		if strings.Contains(args, k) {
+			t.Errorf("unset filter %s must not be sent: %s", k, args)
+		}
+	}
+}
+
+func TestListTasksRejectsContradictions(t *testing.T) {
+	yes, no := true, false
+	for name, tc := range map[string]struct {
+		f    TaskFilter
+		want string
+	}{
+		"after later than before":           {TaskFilter{DueAfter: "2026-11-20", DueBefore: "2026-11-19"}, "due_after"},
+		"completed after later than before": {TaskFilter{CompletedAfter: "2026-11-20", CompletedBefore: "2026-11-19"}, "completed_after"},
+		"completed false with after":        {TaskFilter{Completed: &no, CompletedAfter: "2026-11-01"}, "completed: false"},
+		"completed false with before":       {TaskFilter{Completed: &no, CompletedBefore: "2026-11-01"}, "completed: false"},
+		"dropped with completed":            {TaskFilter{Dropped: &yes, Completed: &yes}, "dropped: true"},
+		"dropped with completed bound":      {TaskFilter{Dropped: &yes, CompletedAfter: "2026-11-01"}, "dropped: true"},
+		"available with completed":          {TaskFilter{Available: &yes, Completed: &yes}, "available: true"},
+		"available with completed bound":    {TaskFilter{Available: &yes, CompletedBefore: "2026-11-01"}, "available: true"},
+		"available with dropped":            {TaskFilter{Available: &yes, Dropped: &yes}, "available: true"},
+		"inbox with project":                {TaskFilter{Inbox: &yes, Project: "p"}, "inbox"},
+	} {
+		r := &captureRunner{res: `[]`}
+		_, err := (&Bridge{Runner: r}).ListTasks(context.Background(), tc.f)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || r.src != "" {
+			t.Errorf("%s: want error naming %q before any script, got %v src=%q", name, tc.want, err, r.src)
+		}
+	}
+	for name, f := range map[string]TaskFilter{
+		"completed with bound":          {Completed: &yes, CompletedAfter: "2026-11-01"},
+		"completed bound alone":         {CompletedAfter: "2026-11-01", CompletedBefore: "2026-11-30"},
+		"dropped with not completed":    {Dropped: &yes, Completed: &no},
+		"available false with dropped":  {Available: &no, Dropped: &yes},
+		"available with not dropped":    {Available: &yes, Dropped: &no},
+		"available with not completed":  {Available: &yes, Completed: &no, DueBefore: "2026-11-30"},
+		"same-day range":                {DueAfter: "2026-11-18", DueBefore: "2026-11-18"},
+		"inbox false with project":      {Inbox: &no, Project: "p"},
+		"modified and added both bound": {ModifiedAfter: "2026-11-01", AddedAfter: "2026-10-01"},
+	} {
+		if _, err := (&Bridge{Runner: &captureRunner{res: `[]`}}).ListTasks(context.Background(), f); err != nil {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }
@@ -180,8 +382,8 @@ func TestProjectDecodesReview(t *testing.T) {
 	if got[1].ReviewInterval != nil || got[1].NextReview != "" || got[1].LastReview != "" {
 		t.Fatalf("want omitted review fields %+v", got[1])
 	}
-	if !strings.Contains(r.src, `\"review_due_before\":\"2026-12-02\"`) {
-		t.Errorf("filter not passed through: %s", r.src)
+	if !strings.Contains(r.src, `\"review_due_before\":\"2026-12-02T23:59:59\"`) {
+		t.Errorf("a date-only bound must cover its whole day on the wire: %s", r.src)
 	}
 }
 

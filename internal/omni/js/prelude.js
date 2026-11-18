@@ -5,6 +5,12 @@ const ref = o => o ? { id: o.id.primaryKey, name: o.name } : null;
 const statusName = s => (/: (\w+)\]/.exec(String(s)) || [])[1];
 const match = (o, q) => o.id.primaryKey === q || o.name === q;
 const parseDate = s => (s ? new Date(s.length === 10 ? s + "T00:00:00" : s) : null);
+// Range filter on a date field, the one owner of how bounds match. Go has resolved args[k + "_after"] and args[k + "_before"] to full timestamps (resolveBound in read.go expands date-only values). Returns a test for a Date or null, or null when neither bound is set. Both bounds are inclusive and a missing date never matches. Dates are reported to the second, so a _before bound includes the whole second it names (a date's fraction would otherwise push it out of its own bound).
+const dateBounds = (args, k) => {
+  const a = args[k + "_after"], b = args[k + "_before"];
+  const lo = a ? new Date(a) : null, hi = b ? new Date(new Date(b).getTime() + 1000) : null;
+  return lo || hi ? d => !!d && (!lo || d >= lo) && (!hi || d < hi) : null;
+};
 const OK = new Set(["Available", "DueSoon", "Next", "Overdue"]);
 // Adds the defer/due/planned/completedAt keys that are set.
 const withDates = (o, x) => {

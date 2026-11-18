@@ -65,7 +65,7 @@ func addReadTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_tasks",
-		Description: "List tasks. Filters are AND-combined. Limit defaults to 50; null returns all.",
+		Description: "List tasks. Filters are AND-combined. *_after bounds are on or after, *_before bounds on or before; a date-only value covers its whole local day, and a task without that date never matches. Nothing hides completed or dropped tasks unless a filter does (available, completed, dropped); completed_* bounds match completed tasks only. Limit defaults to 50; null returns all.",
 		Annotations: readOnly,
 		InputSchema: withLimitDefault[omni.TaskFilter](),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in omni.TaskFilter) (*mcp.CallToolResult, listTasksOut, error) {

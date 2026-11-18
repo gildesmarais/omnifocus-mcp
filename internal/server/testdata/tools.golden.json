@@ -2063,7 +2063,7 @@
             ]
           },
           "review_due_before": {
-            "description": "projects whose next review is on or before this date; YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "description": "next review on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
             "type": "string"
           },
           "search": {
@@ -2333,10 +2333,14 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "List tasks. Filters are AND-combined. Limit defaults to 50; null returns all.",
+      "description": "List tasks. Filters are AND-combined. *_after bounds are on or after, *_before bounds on or before; a date-only value covers its whole local day, and a task without that date never matches. Nothing hides completed or dropped tasks unless a filter does (available, completed, dropped); completed_* bounds match completed tasks only. Limit defaults to 50; null returns all.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "added_after": {
+            "description": "added on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
           "available": {
             "description": "true: not blocked, deferred, completed or dropped",
             "type": [
@@ -2345,17 +2349,41 @@
             ]
           },
           "completed": {
+            "description": "only completed tasks (true) or only not-completed tasks (false)",
             "type": [
               "null",
               "boolean"
             ]
           },
+          "completed_after": {
+            "description": "completed on or after; a date-only value starts at 00:00. Matches completed tasks only. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
+          "completed_before": {
+            "description": "completed on or before; a date-only value covers its whole day. Matches completed tasks only. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
+          "defer_after": {
+            "description": "defer date on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
           "defer_before": {
-            "description": "YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "description": "defer date on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
+          "dropped": {
+            "description": "only dropped tasks (true) or only not-dropped tasks (false)",
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "due_after": {
+            "description": "due on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
             "type": "string"
           },
           "due_before": {
-            "description": "YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "description": "due on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
             "type": "string"
           },
           "flagged": {
@@ -2379,9 +2407,28 @@
               "integer"
             ]
           },
+          "modified_after": {
+            "description": "modified on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
+          "planned_after": {
+            "description": "planned date on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
+          "planned_before": {
+            "description": "planned date on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
           "project": {
             "description": "project id or exact name",
             "type": "string"
+          },
+          "repeating": {
+            "description": "only tasks with a repetition rule (true) or only non-repeating tasks (false)",
+            "type": [
+              "null",
+              "boolean"
+            ]
           },
           "search": {
             "description": "case-insensitive substring over name and note",
@@ -2390,6 +2437,13 @@
           "tag": {
             "description": "tag id or exact name",
             "type": "string"
+          },
+          "untagged": {
+            "description": "only tasks without tags (true) or only tagged tasks (false)",
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         },
         "type": "object"
