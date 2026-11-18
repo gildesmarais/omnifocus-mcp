@@ -5,7 +5,7 @@ MISE := $(shell command -v mise >/dev/null 2>&1 && printf 'mise exec -- ')
 GO := $(MISE)go
 GOFMT := $(MISE)gofmt
 GREMLINS := $(MISE)gremlins
-PKG ?= ./internal
+PKG ?= .
 DIFF ?=
 TIMEOUT_COEF ?= 30
 
@@ -33,7 +33,8 @@ build:
 live:
 	$(GO) test -tags live -count=1 -v ./internal/omni/...
 
-# Opt-in mutation testing (unit tests only, no live tag). PKG narrows the path;
+# Opt-in mutation testing (unit tests only, no live tag). PKG narrows the path
+# (default: the module root, so repo-relative DIFF paths match);
 # DIFF=<ref> mutates only code changed since that ref.
 mutate:
 	$(GREMLINS) unleash $(if $(DIFF),--diff $(DIFF)) --timeout-coefficient $(TIMEOUT_COEF) $(PKG)
