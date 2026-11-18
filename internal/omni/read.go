@@ -116,7 +116,7 @@ type Project struct {
 	Note        string `json:"note,omitempty"`
 	Status      string `json:"status"`
 	Flagged     bool   `json:"flagged"`
-	Sequential  bool   `json:"sequential"`
+	Type        string `json:"type" jsonschema:"Parallel, Sequential or SingleActions"`
 	Available   bool   `json:"available"`
 	Blocked     bool   `json:"blocked"`
 	Folder      *Ref   `json:"folder,omitempty"`
@@ -126,9 +126,24 @@ type Project struct {
 	Planned     string `json:"planned,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
 
+	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty"`
+	Repetition          *Repetition `json:"repetition,omitempty"`
+	CompletedByChildren bool        `json:"completedByChildren"`
+
 	ReviewInterval *ReviewInterval `json:"reviewInterval,omitempty"`
 	NextReview     string          `json:"nextReviewDate,omitempty"`
 	LastReview     string          `json:"lastReviewDate,omitempty"`
+}
+
+// Project types, the one owner of the names: a project is Parallel,
+// Sequential (actions run in order) or SingleActions (a list of unrelated actions).
+var projectTypes = []string{"Parallel", "Sequential", "SingleActions"}
+
+func checkProjectType(t string) error {
+	if !slices.Contains(projectTypes, t) {
+		return fmt.Errorf("type: %q must be one of %v", t, projectTypes)
+	}
+	return nil
 }
 
 // Tag is a tag with its open-task count.

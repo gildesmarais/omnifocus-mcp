@@ -5,7 +5,7 @@
     const ts = statusName(p.taskStatus);
     const o = {
       id: p.id.primaryKey, name: p.name, status: statusName(p.status), flagged: p.flagged,
-      sequential: p.sequential, available: OK.has(ts),
+      type: projectType(p), completedByChildren: p.completedByChildren, available: OK.has(ts),
       blocked: ts === "Blocked", tags: p.tags.map(ref)
     };
     if (p.note) o.note = p.note;
@@ -15,7 +15,7 @@
     const nr = iso(p.nextReviewDate), lr = iso(p.lastReviewDate);
     if (nr) o.nextReviewDate = nr;
     if (lr) o.lastReviewDate = lr;
-    return withDates(o, p);
+    return withEstimateRepetition(withDates(o, p), p);
   }
 
   if (args.id) {

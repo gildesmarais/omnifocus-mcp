@@ -26,16 +26,16 @@ type structOut struct {
 func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "add",
-		Description: "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold) and sequential (project). Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
+		Description: "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold). Project only, named as in add_tasks: type Parallel|Sequential|SingleActions, defer/due/planned, flagged, note, tags by id or name, estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, completedByChildren. Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
 		Annotations: notDestructive,
-		InputSchema: writeSchema[addIn](),
+		InputSchema: addSchema[addIn](),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in addIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.AddStructure(ctx, in.Items)
 		return nil, structOut{Results: rs}, err
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "edit",
-		Description: "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; sequential (project); review (project only): reviewInterval {steps>=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder only. Dropping and deleting are separate tools. Returns one result per item.",
+		Description: "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; folder status Active restores a dropped folder; project only, named as in edit_tasks: type Parallel|Sequential|SingleActions, note, flagged, defer/due/planned, estimatedMinutes and repetition (null clears these), tags {add, remove} by id or name, completedByChildren; review (project only): reviewInterval {steps>=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder, restore. Dropping and deleting are separate tools. Returns one result per item.",
 		Annotations: notDestructive,
 		InputSchema: writeSchema[editIn](),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in editIn) (*mcp.CallToolResult, structOut, error) {
@@ -44,7 +44,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "drop",
-		Description: "Drop tasks, projects, tags or folders. Reversible through this server for projects and tags (edit status back to Active) and tasks (edit_tasks restore true); a dropped folder (which also drops its projects) cannot be restored through these tools. Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
+		Description: "Drop tasks, projects, tags or folders. Reversible through this server: projects, tags and folders by edit status Active, tasks by edit_tasks restore true. Dropping a project drops its tasks; dropping a folder drops its projects. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
 		Annotations: destructive,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in refsIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.DropObjects(ctx, in.Items)

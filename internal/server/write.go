@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"reflect"
+	"slices"
 
 	"github.com/gildesmarais/omnifocus-mcp/internal/omni"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -39,12 +40,34 @@ func writeSchema[In any]() *jsonschema.Schema {
 	return sc
 }
 
+// addSchema is writeSchema for an add tool: add semantics have no clear, so no
+// field accepts null, and the SDK's nullable pointers and slices are made plain.
+func addSchema[In any]() *jsonschema.Schema {
+	sc := writeSchema[In]()
+	var strip func(*jsonschema.Schema)
+	strip = func(s *jsonschema.Schema) {
+		if s == nil {
+			return
+		}
+		s.Types = slices.DeleteFunc(s.Types, func(t string) bool { return t == "null" })
+		if len(s.Types) == 1 {
+			s.Type, s.Types = s.Types[0], nil
+		}
+		for _, p := range s.Properties {
+			strip(p)
+		}
+		strip(s.Items)
+	}
+	strip(sc)
+	return sc
+}
+
 func addWriteTools(s *mcp.Server, b *omni.Bridge) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "add_tasks",
 		Description: "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Optional estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, sequential and completedByChildren. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
 		Annotations: notDestructive,
-		InputSchema: writeSchema[addTasksIn](),
+		InputSchema: addSchema[addTasksIn](),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in addTasksIn) (*mcp.CallToolResult, taskWriteOut, error) {
 		rs, err := b.AddTasks(ctx, in.Tasks)
 		return nil, taskWriteOut{Results: rs}, err

@@ -62,13 +62,13 @@ func TestLiveStructureWrites(t *testing.T) {
 	track("tag", parentTag.ID)
 	childTag := add(StructAdd{Kind: "tag", Name: "mcp-test-child-" + suffix, Parent: parentTag.ID})
 	track("tag", childTag.ID)
-	proj := add(StructAdd{Kind: "project", Name: "mcp-test-proj-" + suffix, Parent: folder.ID, Sequential: true})
+	proj := add(StructAdd{Kind: "project", Name: "mcp-test-proj-" + suffix, Parent: folder.ID, Type: "Sequential"})
 	track("project", proj.ID)
 
 	if g, err := b.GetTag(ctx, childTag.ID); err != nil || g.Parent == nil || g.Parent.ID != parentTag.ID {
 		t.Fatalf("child tag: %+v %v", g, err)
 	}
-	if p, err := b.GetProject(ctx, proj.ID); err != nil || p.Folder == nil || p.Folder.ID != folder.ID || !p.Sequential {
+	if p, err := b.GetProject(ctx, proj.ID); err != nil || p.Folder == nil || p.Folder.ID != folder.ID || p.Type != "Sequential" {
 		t.Fatalf("project: %+v %v", p, err)
 	}
 
@@ -173,7 +173,7 @@ func leftovers(t *testing.T, b *Bridge) {
 	}
 	folders, _ := b.ListFolders(ctx)
 	for _, f := range folders {
-		if f.Name == "MCP Sandbox Folder" {
+		if f.Name == "MCP Sandbox Folder" || strings.HasPrefix(f.Name, "mcp-test-") {
 			n++
 		}
 	}
@@ -357,5 +357,135 @@ func TestLiveProjectReview(t *testing.T) {
 
 	if rs, err := b.EditStructure(ctx, []StructEdit{{Kind: "project", ID: id, ReviewInterval: &ReviewInterval{Steps: 1, Unit: "week"}}}); err != nil || rs[0].OK {
 		t.Fatalf("singular unit must be refused: %+v %v", rs, err)
+	}
+}
+
+// Creates folder "mcp-test-folder-*", tag "mcp-test-tag-*" and projects "mcp-test-*"
+// inside it, mutates only those by id, and deletes them all at the end.
+func TestLiveProjectWrites(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	suffix := time.Now().Format("150405")
+
+	var created []StructRef // cleanup, newest first on use
+	t.Cleanup(func() {
+		for _, c := range slices.Backward(created) {
+			b.DropObjects(ctx, []StructRef{c})
+			b.DeleteObjects(ctx, []StructRef{c}) // refusals for already-deleted objects are expected
+		}
+		leftovers(t, b)
+	})
+	add := func(a StructAdd) string {
+		t.Helper()
+		rs, err := b.AddStructure(ctx, []StructAdd{a})
+		if err != nil || len(rs) != 1 || !rs[0].OK {
+			t.Fatalf("add %+v: %+v %v", a, rs, err)
+		}
+		created = append(created, StructRef{Kind: a.Kind, ID: rs[0].ID})
+		return rs[0].ID
+	}
+	edit := func(e StructEdit) {
+		t.Helper()
+		rs, err := b.EditStructure(ctx, []StructEdit{e})
+		if err != nil || len(rs) != 1 || !rs[0].OK {
+			t.Fatalf("edit %+v: %+v %v", e, rs, err)
+		}
+	}
+	get := func(id string) Project {
+		t.Helper()
+		p, err := b.GetProject(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	hasTag := func(p Project, id string) bool {
+		for _, g := range p.Tags {
+			if g.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	folder := add(StructAdd{Kind: "folder", Name: "mcp-test-folder-" + suffix})
+	tag := add(StructAdd{Kind: "tag", Name: "mcp-test-tag-" + suffix})
+
+	// every type reads back as written, from add and across edits (both flags are written)
+	for _, typ := range projectTypes {
+		id := add(StructAdd{Kind: "project", Name: "mcp-test-type-" + typ + "-" + suffix, Parent: folder, Type: typ})
+		if p := get(id); p.Type != typ {
+			t.Fatalf("add type %s read back %s", typ, p.Type)
+		}
+	}
+	id := add(StructAdd{Kind: "project", Name: "mcp-test-default-" + suffix, Parent: folder})
+	if p := get(id); p.Type != "Parallel" || p.CompletedByChildren || p.EstimatedMinutes != nil || p.Repetition != nil {
+		t.Fatalf("default project: %+v", p)
+	}
+	for _, typ := range []string{"SingleActions", "Sequential", "Parallel", "SingleActions", "Parallel"} {
+		edit(StructEdit{Kind: "project", ID: id, Type: typ})
+		if p := get(id); p.Type != typ {
+			t.Fatalf("edit type %s read back %s", typ, p.Type)
+		}
+	}
+
+	// every field on add
+	rep := &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}
+	full := add(StructAdd{Kind: "project", Name: "mcp-test-full-" + suffix, Parent: folder,
+		Type: "Sequential", Note: "first note", Flagged: true,
+		Defer: "2030-03-01T08:00:00", Due: "2030-03-04T17:30:00", Planned: "2030-03-02T09:00:00",
+		Tags: []string{tag}, EstimatedMinutes: new(30), Repetition: rep, CompletedByChildren: true})
+	p := get(full)
+	if p.Type != "Sequential" || p.Note != "first note" || !p.Flagged || p.Defer != "2030-03-01T08:00:00" || p.Due != "2030-03-04T17:30:00" || p.Planned != "2030-03-02T09:00:00" ||
+		!hasTag(p, tag) || p.EstimatedMinutes == nil || *p.EstimatedMinutes != 30 || p.Repetition == nil || *p.Repetition != *rep || !p.CompletedByChildren {
+		t.Fatalf("project after add: %+v", p)
+	}
+
+	// edit: replace every value, remove the tag
+	rep2 := &Repetition{Rule: "FREQ=DAILY;INTERVAL=2", ScheduleType: "FromCompletion", Anchor: "DeferDate"}
+	edit(StructEdit{Kind: "project", ID: full,
+		Type: "SingleActions", Note: NullableString{Set: true, Value: "second note"}, Flagged: new(false),
+		Defer:            NullableString{Set: true, Value: "2030-04-01T08:00:00"},
+		Due:              NullableString{Set: true, Value: "2030-04-04"},
+		Planned:          NullableString{Set: true, Value: "2030-04-02T09:00:00"},
+		Tags:             &TagEdit{Remove: []string{tag}},
+		EstimatedMinutes: Nullable[int]{Set: true, Value: 45}, Repetition: Nullable[Repetition]{Set: true, Value: *rep2}, CompletedByChildren: new(false)})
+	p = get(full)
+	if p.Type != "SingleActions" || p.Note != "second note" || p.Flagged || p.Defer != "2030-04-01T08:00:00" || p.Due != "2030-04-04T00:00:00" || p.Planned != "2030-04-02T09:00:00" ||
+		hasTag(p, tag) || p.EstimatedMinutes == nil || *p.EstimatedMinutes != 45 || p.Repetition == nil || *p.Repetition != *rep2 || p.CompletedByChildren {
+		t.Fatalf("project after edit: %+v", p)
+	}
+	edit(StructEdit{Kind: "project", ID: full, Tags: &TagEdit{Add: []string{tag}}})
+	if !hasTag(get(full), tag) {
+		t.Fatal("tag add")
+	}
+
+	// null clears dates, note, estimate and repetition; the rest stays
+	none := NullableString{Set: true, Null: true}
+	edit(StructEdit{Kind: "project", ID: full,
+		Note: none, Defer: none, Due: none, Planned: none,
+		EstimatedMinutes: Nullable[int]{Set: true, Null: true}, Repetition: Nullable[Repetition]{Set: true, Null: true}})
+	p = get(full)
+	if p.Note != "" || p.Defer != "" || p.Due != "" || p.Planned != "" || p.EstimatedMinutes != nil || p.Repetition != nil {
+		t.Fatalf("project after clears: %+v", p)
+	}
+	if p.Type != "SingleActions" || !hasTag(p, tag) {
+		t.Fatalf("clears must not touch other fields: %+v", p)
+	}
+
+	// a dropped folder is restored by edit status Active; its project is active again
+	inner := add(StructAdd{Kind: "project", Name: "mcp-test-inner-" + suffix, Parent: folder})
+	if rs, err := b.DropObjects(ctx, []StructRef{{Kind: "folder", ID: folder}}); err != nil || !rs[0].OK {
+		t.Fatalf("drop folder: %+v %v", rs, err)
+	}
+	if f, err := b.GetFolder(ctx, folder); err != nil || f.Status != "Dropped" {
+		t.Fatalf("folder after drop: %+v %v", f, err)
+	}
+	edit(StructEdit{Kind: "folder", ID: folder, Status: "Active"})
+	if f, err := b.GetFolder(ctx, folder); err != nil || f.Status != "Active" {
+		t.Fatalf("folder after restore: %+v %v", f, err)
+	}
+	if p := get(inner); p.Status != "Active" || !p.Available {
+		t.Fatalf("project after folder restore: %+v", p)
 	}
 }

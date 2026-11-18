@@ -17,6 +17,12 @@ const withDates = (o, x) => {
 };
 // A repetition rule as Repetition in read.go (enums print as "[object ...: Name]").
 const shapeRepetition = r => ({ rule: r.ruleString, scheduleType: statusName(r.scheduleType), anchor: statusName(r.anchorDateKey), catchUp: r.catchUpAutomatically });
+// Adds estimatedMinutes and repetition when set.
+const withEstimateRepetition = (o, x) => {
+  if (x.estimatedMinutes != null) o.estimatedMinutes = x.estimatedMinutes;
+  const rr = x.repetitionRule; if (rr) o.repetition = shapeRepetition(rr);
+  return o;
+};
 // A Repetition from Go as a rule. Go has validated the names against the allowed sets; the guard stops a name that drifts from OmniFocus's enums.
 const makeRule = r => {
   const st = Task.RepetitionScheduleType[r.scheduleType], an = Task.AnchorDateKey[r.anchor];
@@ -36,10 +42,34 @@ const shapeTask = t => {
   if (t.note) o.note = t.note;
   const p = ref(t.containingProject); if (p) o.project = p;
   const par = ref(t.parent); if (par) o.parent = par;
-  if (t.estimatedMinutes != null) o.estimatedMinutes = t.estimatedMinutes;
-  const rr = t.repetitionRule; if (rr) o.repetition = shapeRepetition(rr);
   const dd = iso(t.dropDate); if (dd) o.dropDate = dd;
-  return withDates(o, t);
+  return withEstimateRepetition(withDates(o, t), t);
+};
+// A project's type from its two flags; OmniFocus allows both at once, and a single-actions list wins.
+const projectType = p => p.containsSingletonActions ? "SingleActions" : p.sequential ? "Sequential" : "Parallel";
+// Writes both flags so the type reads back whatever they were.
+const setProjectType = (p, type) => { p.sequential = type === "Sequential"; p.containsSingletonActions = type === "SingleActions"; };
+const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
+// Validates the project fields of an add or edit item and looks up its tags before any mutation, then returns the function applying them.
+// Absent keys are untouched and null clears, so add (keys only when set) and edit share it; tagsAdd/tagsRemove are tag ids.
+const projectWriter = (p, tagsAdd, tagsRemove) => {
+  const tagsOf = ids => (ids || []).map(id => { const g = Tag.byIdentifier(id); if (!g) throw new Error("tag " + id + " not found"); return g; });
+  const add = tagsOf(tagsAdd), rem = tagsOf(tagsRemove);
+  const rule = has(p, "repetition") && p.repetition !== null ? makeRule(p.repetition) : null;
+  const date = (k, set) => { if (has(p, k)) set(p[k] === null ? null : parseDate(p[k])); };
+  return o => {
+    if (p.type) setProjectType(o, p.type);
+    if (has(p, "note")) o.note = p.note === null ? "" : p.note;
+    if (has(p, "flagged")) o.flagged = p.flagged;
+    date("defer", d => { o.deferDate = d; });
+    date("due", d => { o.dueDate = d; });
+    date("planned", d => { o.plannedDate = d; });
+    if (has(p, "estimatedMinutes")) o.estimatedMinutes = p.estimatedMinutes;
+    if (has(p, "repetition")) o.repetitionRule = rule;
+    if (has(p, "completedByChildren")) o.completedByChildren = p.completedByChildren;
+    add.forEach(g => o.addTag(g));
+    rem.forEach(g => o.removeTag(g));
+  };
 };
 // Structure helpers (add/edit/drop/delete). byKind maps a kind to its class; tags nest under tags, the rest under library.
 const byKind = { task: Task, project: Project, tag: Tag, folder: Folder };

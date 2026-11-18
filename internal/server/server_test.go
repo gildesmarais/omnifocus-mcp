@@ -245,11 +245,11 @@ func TestStructureToolsOverMCP(t *testing.T) {
 
 func TestAddStructureProjectOverMCP(t *testing.T) {
 	res := `[{"id":"n","kind":"project","ok":true,"name":"P","status":"OnHold","parent":{"id":"f1","name":"Top"}}]`
-	out, r, src := call(t, res, "add", map[string]any{"items": []any{map[string]any{"kind": "project", "name": "P", "parent": "f1", "sequential": true, "status": "OnHold"}}})
+	out, r, src := call(t, res, "add", map[string]any{"items": []any{map[string]any{"kind": "project", "name": "P", "parent": "f1", "type": "Sequential", "status": "OnHold"}}})
 	if r.IsError {
 		t.Fatalf("add: %+v", r)
 	}
-	for _, want := range []string{`\"parent\":\"f1\"`, `\"sequential\":true`, `\"status\":\"OnHold\"`} {
+	for _, want := range []string{`\"parent\":\"f1\"`, `\"type\":\"Sequential\"`, `\"status\":\"OnHold\"`} {
 		if !strings.Contains(src, want) {
 			t.Errorf("source lacks %s: %s", want, src)
 		}
@@ -300,5 +300,57 @@ func TestToolAnnotations(t *testing.T) {
 	}
 	if n < 14 {
 		t.Fatalf("only %d tools listed", n)
+	}
+}
+
+// Add semantics have no clear: the add schemas must not advertise null anywhere,
+// and a null in an add item is refused before any script runs.
+func TestAddSchemasForbidNull(t *testing.T) {
+	ctx := context.Background()
+	r := &recRunner{res: `[]`}
+	cs := connect(t, r)
+	for tl, err := range cs.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw, _ := json.Marshal(tl.InputSchema); (tl.Name == "add" || tl.Name == "add_tasks") && strings.Contains(string(raw), `"null"`) {
+			t.Errorf("%s input schema allows null: %s", tl.Name, raw)
+		}
+	}
+	for _, c := range []struct {
+		tool, key string
+		item      map[string]any
+	}{
+		{"add_tasks", "tasks", map[string]any{"name": "T", "estimatedMinutes": nil}},
+		{"add_tasks", "tasks", map[string]any{"name": "T", "repetition": nil}},
+		{"add", "items", map[string]any{"kind": "project", "name": "P", "repetition": nil}},
+		{"add", "items", map[string]any{"kind": "project", "name": "P", "estimatedMinutes": nil}},
+	} {
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: c.tool, Arguments: map[string]any{c.key: []any{c.item}}})
+		if err == nil && !res.IsError {
+			t.Errorf("%s %v: null accepted", c.tool, c.item)
+		}
+	}
+	if r.src != "" {
+		t.Errorf("a script ran: %s", r.src)
+	}
+}
+
+func TestEditProjectAndFolderRestoreOverMCP(t *testing.T) {
+	res := `[{"id":"p","kind":"project","ok":true,"name":"P","status":"Active"},{"id":"f","kind":"folder","ok":true,"name":"F","status":"Active"}]`
+	out, r, src := call(t, res, "edit", map[string]any{"items": []any{
+		map[string]any{"kind": "project", "id": "p", "type": "SingleActions", "note": nil, "due": nil, "estimatedMinutes": nil, "repetition": nil, "completedByChildren": true},
+		map[string]any{"kind": "folder", "id": "f", "status": "Active"},
+	}})
+	if r.IsError {
+		t.Fatalf("edit: %+v", r)
+	}
+	for _, want := range []string{`\"type\":\"SingleActions\"`, `\"note\":null`, `\"due\":null`, `\"estimatedMinutes\":null`, `\"repetition\":null`, `\"completedByChildren\":true`, `\"kind\":\"folder\",\"id\":\"f\",\"status\":\"Active\"`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("source lacks %s: %s", want, src)
+		}
+	}
+	if rs := out["results"].([]any); len(rs) != 2 || rs[1].(map[string]any)["status"] != "Active" {
+		t.Fatalf("results: %v", rs)
 	}
 }

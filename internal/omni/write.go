@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 )
 
@@ -158,8 +159,9 @@ func nonEmpty(field, s string) error {
 }
 
 // resolveTags maps ids or exact names to tag ids; unknown or ambiguous refs fail.
+// No refs give nil, so an empty list stays an unset field.
 func resolveTags(refs []string, tags []Tag) ([]string, error) {
-	ids := make([]string, 0, len(refs))
+	var ids []string
 	for _, r := range refs {
 		var hit []string
 		for _, t := range tags {
@@ -181,6 +183,19 @@ func resolveTags(refs []string, tags []Tag) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// resolveTagEdit maps both lists to tag ids and rejects a tag that is both added and removed.
+func resolveTagEdit(te TagEdit, tags []Tag) (TagEdit, error) {
+	add, err1 := resolveTags(te.Add, tags)
+	rem, err2 := resolveTags(te.Remove, tags)
+	errs := []error{err1, err2}
+	for _, a := range add {
+		if slices.Contains(rem, a) {
+			errs = append(errs, fmt.Errorf("tags: %q is both added and removed", a))
+		}
+	}
+	return TagEdit{Add: add, Remove: rem}, errors.Join(errs...)
 }
 
 // newAddItem validates a and returns its script form.
@@ -255,22 +270,9 @@ func newPatchItem(p TaskEdit, tags []Tag) (patchItem, error) {
 		}
 	}
 	if p.Tags != nil {
-		add, err1 := resolveTags(p.Tags.Add, tags)
-		rem, err2 := resolveTags(p.Tags.Remove, tags)
-		errs = append(errs, err1, err2)
-		for _, a := range add {
-			for _, r := range rem {
-				if a == r {
-					errs = append(errs, fmt.Errorf("tags: %q is both added and removed", a))
-				}
-			}
-		}
-		if len(add) > 0 {
-			it.TagsAdd = add
-		}
-		if len(rem) > 0 {
-			it.TagsRemove = rem
-		}
+		te, err := resolveTagEdit(*p.Tags, tags)
+		errs = append(errs, err)
+		it.TagsAdd, it.TagsRemove = te.Add, te.Remove
 	}
 	if err := errors.Join(errs...); err != nil {
 		return patchItem{}, err

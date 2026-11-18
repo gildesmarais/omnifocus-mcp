@@ -92,7 +92,13 @@ Getters are per type (`get_task`, `get_project`, `get_tag`, `get_folder`) rather
   - `estimatedMinutes` and `repetition`, when set. `repetition` is `{rule, scheduleType, anchor, catchUp}`: an RRULE string, `Regularly` (fixed schedule) or `FromCompletion` (the next occurrence counts from completion), the date the rule moves (`DeferDate`, `DueDate` or `PlannedDate`) and whether missed occurrences are skipped.
 - `list_projects`: `status` filter (`Active`, `OnHold`, `Done`, `Dropped`), optional `folder`, `search`, `review_due_before` (a date; projects whose `nextReviewDate` is on or before it, a date-only value covering its whole day), `limit`.
 
-  Each project (also from `get_project`) has `reviewInterval` (`{steps, unit}`), `nextReviewDate` and `lastReviewDate` when set. The unit is `days`, `weeks`, `months` or `years` (`hours` can appear on read). Combine `review_due_before` with `status: Active` to get the review queue, since completed and dropped projects keep their review dates.
+  Each project (also from `get_project`) has id, name, note, status, flagged, tags, defer/due/planned dates, `available`, `blocked` and folder. It also has:
+  - `type`, always present: `Parallel`, `Sequential` (tasks run in order) or `SingleActions` (a list of unrelated actions). OmniFocus can hold both the sequential and the single-actions flag at once. `SingleActions` wins on read.
+  - `completedByChildren` (completes with its last task), always present.
+  - `estimatedMinutes` and `repetition` (same shape as on tasks), when set.
+  - `reviewInterval` (`{steps, unit}`), `nextReviewDate` and `lastReviewDate`, when set.
+
+  The review unit is `days`, `weeks`, `months` or `years` (`hours` can appear on read). Combine `review_due_before` with `status: Active` to get the review queue, since completed and dropped projects keep their review dates.
 - `list_tags`: includes status and `remainingTasks`.
 - `list_folders`: includes parent and status.
 - `list_perspectives`: `{perspectives: [{id|null, name, builtin}]}`.
@@ -116,13 +122,16 @@ A project id is not a task id. `get_task`, `edit_tasks`, `add_tasks` parents and
 
 Each tool takes `{items: [...]}` and returns `{results: [{id, kind, ok, error?, name?, status?, parent?}]}` in input order. An invalid or refused item gets `ok: false` and leaves the others untouched.
 
-- `add`: items `{kind: project|tag|folder, name, parent?, status?, sequential? (project)}`. The parent is a folder for projects and folders, or a tag for tags. Omit it to create at the root.
-- `edit`: items `{kind, id, name?, status?, sequential? (project), move?: {parent: id | null}, reorder?: {before|after: id}}`.
+- `add`: items `{kind: project|tag|folder, name, parent?, status?, type?, defer?, due?, planned?, flagged?, note?, tags?: [id|name], estimatedMinutes?, repetition?, completedByChildren?}`. The parent is a folder for projects and folders, or a tag for tags. Omit it to create at the root.
+  - `type`, `defer`, `due`, `planned`, `flagged`, `note`, `tags`, `estimatedMinutes`, `repetition` and `completedByChildren` are for projects only and are rejected on tags and folders. They take the same values as in `add_tasks`. `type` is `Parallel` (the default), `Sequential` or `SingleActions`.
+  - The `add` schema never allows `null`: adding has nothing to clear.
+- `edit`: items `{kind, id, name?, status?, move?: {parent: id | null}, reorder?: {before|after: id}}` plus, for projects, `type?`, `note?`, `flagged?`, `defer?`, `due?`, `planned?`, `tags?: {add?: [..], remove?: [..]}`, `estimatedMinutes?`, `repetition?` and `completedByChildren?`.
   - `move` and `reorder` are mutually exclusive. A reorder adopts the sibling's parent.
   - Moving an object into itself or a descendant is refused.
   - Project status: `Active`, `OnHold`, `Done`.
   - Tag status: `Active`, `OnHold`. `Active` re-activates a dropped tag.
-  - Folders: rename, move and reorder only.
+  - Folder status: `Active` only. It restores a dropped folder, and its projects come back active. Any other folder status is refused. Folders can also be renamed, moved and reordered.
+  - Project fields (rejected on tags and folders) follow `edit_tasks`: an omitted field is unchanged, and `null` clears `note`, the three dates, `estimatedMinutes` and `repetition`. `tags` takes `{add, remove}` by id or unambiguous name, and a tag cannot be in both lists. `type` always sets the project to exactly that type. A patch must change something.
   - Project review (rejected on tags and folders):
     - `reviewInterval: {steps, unit}` with `steps` an integer of at least 1 and `unit` one of `days`, `weeks`, `months`, `years`. It cannot be cleared. Changing it does not move `nextReviewDate`.
     - `nextReviewDate` (a date). OmniFocus truncates it to local midnight, so `2026-12-01T13:45:00` is stored as `2026-12-01T00:00:00`.
@@ -132,7 +141,7 @@ Each tool takes `{items: [...]}` and returns `{results: [{id, kind, ok, error?, 
 
 Items are `{kind: task|project|tag|folder, id}`, with the same result shape as structure writes. The safety checks run inside OmniFocus, because only it can count remaining tasks, and a refusal appears as that item's `error`.
 
-- `drop`: you can undo it through this server for projects and tags, by editing their status back to `Active`, and for tasks with `edit_tasks` `restore: true`. A dropped folder, which also drops its projects, cannot be restored through these tools. Dropping a project drops its tasks. A tag can be dropped only when neither it nor any descendant tag has remaining tasks.
+- `drop`: you can undo it through this server for projects, tags and folders, by editing their status back to `Active`, and for tasks with `edit_tasks` `restore: true`. Dropping a project drops its tasks, and dropping a folder drops its projects. A tag can be dropped only when neither it nor any descendant tag has remaining tasks.
 - `delete`: irreversible.
   - Tags and folders are deleted only when already dropped and empty, so delete children first.
   - A project is deleted only when it has no remaining (incomplete) tasks. A dropped project can always be deleted.
@@ -152,7 +161,7 @@ make live    # integration tests against the real OmniFocus
 make mutate  # opt-in mutation testing (gremlins, all mutators via .gremlins.yaml); PKG=./internal/omni narrows it, DIFF=main mutates only code changed since main
 ```
 
-Unit tests fake the script runner and never touch OmniFocus. `make live` needs OmniFocus running with Automation permission. It reads your database and creates, edits and deletes its own objects: tasks in an "MCP Sandbox" project (the project itself stays), an "MCP Sandbox Folder", `mcp-test-*` tags and `mcp-test-*` projects. Run it on a test database if you'd rather not have those appear in your sync.
+Unit tests fake the script runner and never touch OmniFocus. `make live` needs OmniFocus running with Automation permission. It reads your database and creates, edits and deletes its own objects: tasks in an "MCP Sandbox" project (the project itself stays), an "MCP Sandbox Folder", `mcp-test-*` folders, tags and projects. Run it on a test database if you'd rather not have those appear in your sync.
 
 Layout:
 

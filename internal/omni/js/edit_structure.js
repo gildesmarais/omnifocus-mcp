@@ -1,10 +1,10 @@
 (function (args) {
   // args.items: validated patches. Every lookup and guard runs before the first
   // mutation so a bad target leaves the object untouched.
-  const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
   return eachItem(args.items, p => {
     const o = find(p.kind, p.id);
     const tag = p.kind === "tag", nested = p.kind !== "project";
+    const write = p.kind === "project" ? projectWriter(p, p.tags && p.tags.add, p.tags && p.tags.remove) : null;
     let pos = null;
     if (p.move) {
       if (p.move.parent === null) pos = tag ? tags.ending : library.ending;
@@ -20,8 +20,8 @@
     }
     if (pos) { if (tag) moveTags([o], pos); else moveSections([o], pos); }
     if (has(p, "name")) o.name = p.name;
-    if (p.status) o.status = (tag ? Tag.Status : Project.Status)[p.status];
-    if (has(p, "sequential")) o.sequential = p.sequential;
+    if (p.status) o.status = byKind[p.kind].Status[p.status];
+    if (write) write(o);
     if (p.reviewInterval) { // no constructor: mutate the existing object and assign it back
       const r = o.reviewInterval;
       r.steps = p.reviewInterval.steps;

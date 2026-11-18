@@ -16,7 +16,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold) and sequential (project). Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
+      "description": "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold). Project only, named as in add_tasks: type Parallel|Sequential|SingleActions, defer/due/planned, flagged, note, tags by id or name, estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, completedByChildren. Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -25,6 +25,26 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "completedByChildren": {
+                  "description": "project only: completes when its last task does",
+                  "type": "boolean"
+                },
+                "defer": {
+                  "description": "project only",
+                  "type": "string"
+                },
+                "due": {
+                  "description": "project only",
+                  "type": "string"
+                },
+                "estimatedMinutes": {
+                  "description": "project only: 0 or more",
+                  "type": "integer"
+                },
+                "flagged": {
+                  "description": "project only",
+                  "type": "boolean"
+                },
                 "kind": {
                   "description": "project, tag or folder",
                   "type": "string"
@@ -32,16 +52,60 @@
                 "name": {
                   "type": "string"
                 },
+                "note": {
+                  "description": "project only",
+                  "type": "string"
+                },
                 "parent": {
                   "description": "folder id (project, folder) or tag id (tag); omit for the root",
                   "type": "string"
                 },
-                "sequential": {
-                  "description": "project only: sequential instead of parallel",
-                  "type": "boolean"
+                "planned": {
+                  "description": "project only",
+                  "type": "string"
+                },
+                "repetition": {
+                  "additionalProperties": false,
+                  "description": "project only",
+                  "properties": {
+                    "anchor": {
+                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "type": "string"
+                    },
+                    "catchUp": {
+                      "description": "skip occurrences already past",
+                      "type": "boolean"
+                    },
+                    "rule": {
+                      "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                      "type": "string"
+                    },
+                    "scheduleType": {
+                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rule",
+                    "scheduleType",
+                    "anchor",
+                    "catchUp"
+                  ],
+                  "type": "object"
                 },
                 "status": {
                   "description": "project: Active, OnHold, Done; tag: Active, OnHold",
+                  "type": "string"
+                },
+                "tags": {
+                  "description": "project only: tag ids or unambiguous names",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "description": "project only: Parallel (default), Sequential or SingleActions",
                   "type": "string"
                 }
               },
@@ -51,10 +115,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -153,10 +214,7 @@
                 },
                 "estimatedMinutes": {
                   "description": "0 or more",
-                  "type": [
-                    "null",
-                    "integer"
-                  ]
+                  "type": "integer"
                 },
                 "flagged": {
                   "type": "boolean"
@@ -204,10 +262,7 @@
                     "anchor",
                     "catchUp"
                   ],
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "sequential": {
                   "description": "subtasks run in order",
@@ -218,10 +273,7 @@
                   "items": {
                     "type": "string"
                   },
-                  "type": [
-                    "null",
-                    "array"
-                  ]
+                  "type": "array"
                 }
               },
               "required": [
@@ -229,10 +281,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -569,7 +618,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Drop tasks, projects, tags or folders. Reversible through this server for projects and tags (edit status back to Active) and tasks (edit_tasks restore true); a dropped folder (which also drops its projects) cannot be restored through these tools. Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
+      "description": "Drop tasks, projects, tags or folders. Reversible through this server: projects, tags and folders by edit status Active, tasks by edit_tasks restore true. Dropping a project drops its tasks; dropping a folder drops its projects. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -673,7 +722,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; sequential (project); review (project only): reviewInterval {steps\u003e=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder only. Dropping and deleting are separate tools. Returns one result per item.",
+      "description": "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; folder status Active restores a dropped folder; project only, named as in edit_tasks: type Parallel|Sequential|SingleActions, note, flagged, defer/due/planned, estimatedMinutes and repetition (null clears these), tags {add, remove} by id or name, completedByChildren; review (project only): reviewInterval {steps\u003e=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder, restore. Dropping and deleting are separate tools. Returns one result per item.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -682,6 +731,39 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "completedByChildren": {
+                  "description": "completes when its last task does",
+                  "type": [
+                    "null",
+                    "boolean"
+                  ]
+                },
+                "defer": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "due": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "estimatedMinutes": {
+                  "description": "0 or more; null clears",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "flagged": {
+                  "type": [
+                    "null",
+                    "boolean"
+                  ]
+                },
                 "id": {
                   "type": "string"
                 },
@@ -715,8 +797,20 @@
                   ]
                 },
                 "nextReviewDate": {
-                  "description": "project only; OmniFocus truncates it to local midnight; not with reviewed",
+                  "description": "OmniFocus truncates it to local midnight; not with reviewed",
                   "type": "string"
+                },
+                "note": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "planned": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "reorder": {
                   "additionalProperties": false,
@@ -734,9 +828,45 @@
                     "object"
                   ]
                 },
+                "repetition": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "anchor": {
+                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "type": "string"
+                        },
+                        "catchUp": {
+                          "description": "skip occurrences already past",
+                          "type": "boolean"
+                        },
+                        "rule": {
+                          "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                          "type": "string"
+                        },
+                        "scheduleType": {
+                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "rule",
+                        "scheduleType",
+                        "anchor",
+                        "catchUp"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "null clears"
+                },
                 "reviewInterval": {
                   "additionalProperties": false,
-                  "description": "project only; cannot be cleared; does not move nextReviewDate",
+                  "description": "cannot be cleared; does not move nextReviewDate",
                   "properties": {
                     "steps": {
                       "description": "1 or more",
@@ -757,18 +887,43 @@
                   ]
                 },
                 "reviewed": {
-                  "description": "project only: mark reviewed now; OmniFocus recomputes nextReviewDate from the interval",
+                  "description": "mark reviewed now; OmniFocus recomputes nextReviewDate from the interval",
                   "type": "boolean"
                 },
-                "sequential": {
-                  "description": "project only",
+                "status": {
+                  "description": "project: Active, OnHold, Done; tag: Active, OnHold; folder: Active (restores a dropped folder)",
+                  "type": "string"
+                },
+                "tags": {
+                  "additionalProperties": false,
+                  "description": "tag ids or unambiguous names to add and remove",
+                  "properties": {
+                    "add": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "remove": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    }
+                  },
                   "type": [
                     "null",
-                    "boolean"
+                    "object"
                   ]
                 },
-                "status": {
-                  "description": "project: Active, OnHold, Done; tag: Active, OnHold (Active re-activates a dropped tag); folders have no status edit",
+                "type": {
+                  "description": "Parallel, Sequential or SingleActions",
                   "type": "string"
                 }
               },
@@ -1349,11 +1504,20 @@
           "completedAt": {
             "type": "string"
           },
+          "completedByChildren": {
+            "type": "boolean"
+          },
           "defer": {
             "type": "string"
           },
           "due": {
             "type": "string"
+          },
+          "estimatedMinutes": {
+            "type": [
+              "null",
+              "integer"
+            ]
           },
           "flagged": {
             "type": "boolean"
@@ -1395,6 +1559,37 @@
           "planned": {
             "type": "string"
           },
+          "repetition": {
+            "additionalProperties": false,
+            "properties": {
+              "anchor": {
+                "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                "type": "string"
+              },
+              "catchUp": {
+                "description": "skip occurrences already past",
+                "type": "boolean"
+              },
+              "rule": {
+                "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                "type": "string"
+              },
+              "scheduleType": {
+                "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "rule",
+              "scheduleType",
+              "anchor",
+              "catchUp"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "reviewInterval": {
             "additionalProperties": false,
             "properties": {
@@ -1415,9 +1610,6 @@
               "null",
               "object"
             ]
-          },
-          "sequential": {
-            "type": "boolean"
           },
           "status": {
             "type": "string"
@@ -1443,6 +1635,10 @@
               "null",
               "array"
             ]
+          },
+          "type": {
+            "description": "Parallel, Sequential or SingleActions",
+            "type": "string"
           }
         },
         "required": [
@@ -1450,10 +1646,11 @@
           "name",
           "status",
           "flagged",
-          "sequential",
+          "type",
           "available",
           "blocked",
-          "tags"
+          "tags",
+          "completedByChildren"
         ],
         "type": "object"
       }
@@ -1897,11 +2094,20 @@
                 "completedAt": {
                   "type": "string"
                 },
+                "completedByChildren": {
+                  "type": "boolean"
+                },
                 "defer": {
                   "type": "string"
                 },
                 "due": {
                   "type": "string"
+                },
+                "estimatedMinutes": {
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
                 },
                 "flagged": {
                   "type": "boolean"
@@ -1943,6 +2149,37 @@
                 "planned": {
                   "type": "string"
                 },
+                "repetition": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor": {
+                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "type": "string"
+                    },
+                    "catchUp": {
+                      "description": "skip occurrences already past",
+                      "type": "boolean"
+                    },
+                    "rule": {
+                      "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                      "type": "string"
+                    },
+                    "scheduleType": {
+                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rule",
+                    "scheduleType",
+                    "anchor",
+                    "catchUp"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
                 "reviewInterval": {
                   "additionalProperties": false,
                   "properties": {
@@ -1963,9 +2200,6 @@
                     "null",
                     "object"
                   ]
-                },
-                "sequential": {
-                  "type": "boolean"
                 },
                 "status": {
                   "type": "string"
@@ -1991,6 +2225,10 @@
                     "null",
                     "array"
                   ]
+                },
+                "type": {
+                  "description": "Parallel, Sequential or SingleActions",
+                  "type": "string"
                 }
               },
               "required": [
@@ -1998,10 +2236,11 @@
                 "name",
                 "status",
                 "flagged",
-                "sequential",
+                "type",
                 "available",
                 "blocked",
-                "tags"
+                "tags",
+                "completedByChildren"
               ],
               "type": "object"
             },

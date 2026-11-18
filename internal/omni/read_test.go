@@ -191,3 +191,38 @@ func TestListProjectsRejectsBadReviewDate(t *testing.T) {
 		t.Fatalf("want validation error before any script, got %v src=%q", err, r.src)
 	}
 }
+
+func TestProjectDecodesTypeEstimateRepetition(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"p1","name":"P","status":"Active","type":"SingleActions","completedByChildren":true,"estimatedMinutes":90,"repetition":` + repJSON + `,"tags":[]},{"id":"p2","name":"Q","status":"Active","type":"Parallel","completedByChildren":false,"tags":[]}]`}
+	got, err := (&Bridge{Runner: r}).ListProjects(context.Background(), ProjectFilter{})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	a := got[0]
+	if a.Type != "SingleActions" || !a.CompletedByChildren || a.EstimatedMinutes == nil || *a.EstimatedMinutes != 90 || a.Repetition == nil || a.Repetition.Anchor != "DueDate" || !a.Repetition.CatchUp {
+		t.Fatalf("bad decode %+v", a)
+	}
+	if b := got[1]; b.Type != "Parallel" || b.CompletedByChildren || b.EstimatedMinutes != nil || b.Repetition != nil {
+		t.Fatalf("want omitted fields %+v", b)
+	}
+	raw, err := json.Marshal(got[1])
+	if err != nil || strings.Contains(string(raw), "sequential") || !strings.Contains(string(raw), `"type":"Parallel"`) || !strings.Contains(string(raw), `"completedByChildren":false`) {
+		t.Fatalf("type and completedByChildren always present, no sequential: %s %v", raw, err)
+	}
+}
+
+func TestProjectTypeCheck(t *testing.T) {
+	for _, ok := range projectTypes {
+		if err := checkProjectType(ok); err != nil {
+			t.Errorf("%s: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "parallel", "Single", "Sequential "} {
+		if err := checkProjectType(bad); err == nil {
+			t.Errorf("%q: want error", bad)
+		}
+	}
+	if got := strings.Join(projectTypes, ","); got != "Parallel,Sequential,SingleActions" {
+		t.Errorf("project types: %s", got)
+	}
+}
