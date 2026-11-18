@@ -384,3 +384,16 @@ func TestStructTagLookupOnlyWhenNeeded(t *testing.T) {
 		}
 	}
 }
+
+// A null clears the estimate: the value it carries is never validated.
+func TestProjectEditNullEstimateIsNotChecked(t *testing.T) {
+	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Set: true, Null: true, Value: -5}}).check(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Value: -5}}).check(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Set: true, Value: -5}}).check(); err == nil {
+		t.Fatal("want error for a set negative estimate")
+	}
+}
