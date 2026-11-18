@@ -56,12 +56,12 @@ func TestAddItemWire(t *testing.T) {
 const repJSON = `{"rule":"FREQ=WEEKLY;INTERVAL=1;BYDAY=FR","scheduleType":"Regularly","anchor":"DueDate","catchUp":true}`
 
 func TestAddItemWireTaskFields(t *testing.T) {
-	zero := 0
+	zero := Minutes(0)
 	for name, tc := range map[string]struct {
 		in   TaskAdd
 		want string
 	}{
-		"all": {TaskAdd{Name: "n", EstimatedMinutes: new(45), Repetition: &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}, Sequential: true, CompletedByChildren: true},
+		"all": {TaskAdd{Name: "n", EstimatedMinutes: new(Minutes(45)), Repetition: &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}, Sequential: true, CompletedByChildren: true},
 			`{"name":"n","estimatedMinutes":45,"repetition":` + repJSON + `,"sequential":true,"completedByChildren":true}`},
 		"zero estimate is sent": {TaskAdd{Name: "n", EstimatedMinutes: &zero}, `{"name":"n","estimatedMinutes":0}`},
 		"catchUp false is sent": {TaskAdd{Name: "n", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "FromCompletion", Anchor: "DeferDate"}},
@@ -79,7 +79,7 @@ func TestAddItemWireTaskFields(t *testing.T) {
 }
 
 func TestAddValidationTaskFields(t *testing.T) {
-	neg := -5
+	neg := Minutes(-5)
 	good := Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: "DueDate"}
 	for name, a := range map[string]TaskAdd{
 		"negative estimate":    {Name: "x", EstimatedMinutes: &neg},
@@ -93,7 +93,7 @@ func TestAddValidationTaskFields(t *testing.T) {
 			t.Errorf("%s: want error", name)
 		}
 	}
-	if _, err := newAddItem(TaskAdd{Name: "x", EstimatedMinutes: new(0), Repetition: &good}, nil); err != nil {
+	if _, err := newAddItem(TaskAdd{Name: "x", EstimatedMinutes: new(Minutes(0)), Repetition: &good}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -151,13 +151,13 @@ func TestPatchTaskFieldsCountAsChanges(t *testing.T) {
 }
 
 func TestNullableWire(t *testing.T) {
-	if got := wire(t, Nullable[int]{Set: true, Null: true}); got != "null" {
+	if got := wire(t, Nullable[Minutes]{Set: true, Null: true}); got != "null" {
 		t.Errorf("clear: %s", got)
 	}
-	if got := wire(t, Nullable[int]{Set: true, Value: 0}); got != "0" {
+	if got := wire(t, Nullable[Minutes]{Set: true, Value: 0}); got != "0" {
 		t.Errorf("zero value: %s", got)
 	}
-	var n Nullable[int]
+	var n Nullable[Minutes]
 	if err := json.Unmarshal([]byte(`7`), &n); err != nil || !n.Set || n.Null || n.Value != 7 {
 		t.Errorf("value: %+v %v", n, err)
 	}
@@ -335,10 +335,10 @@ func TestPatchEstimateValidatedOnlyWhenSetAndNotNull(t *testing.T) {
 	if _, err := newPatchItem(decodeEdit(t, `{"id":"a","name":"n"}`), nil); err != nil {
 		t.Fatalf("unset estimate: %v", err)
 	}
-	if _, err := newPatchItem(TaskEdit{ID: "a", EstimatedMinutes: Nullable[int]{Set: true, Null: true, Value: -5}}, nil); err != nil {
+	if _, err := newPatchItem(TaskEdit{ID: "a", EstimatedMinutes: Nullable[Minutes]{Set: true, Null: true, Value: -5}}, nil); err != nil {
 		t.Fatalf("null estimate clears and is not checked: %v", err)
 	}
-	if _, err := newPatchItem(TaskEdit{ID: "a", EstimatedMinutes: Nullable[int]{Set: true, Value: -5}}, nil); err == nil {
+	if _, err := newPatchItem(TaskEdit{ID: "a", EstimatedMinutes: Nullable[Minutes]{Set: true, Value: -5}}, nil); err == nil {
 		t.Fatal("set negative estimate must fail")
 	}
 }

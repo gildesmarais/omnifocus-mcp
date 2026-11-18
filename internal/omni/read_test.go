@@ -69,13 +69,13 @@ func TestRepetitionCheck(t *testing.T) {
 	if err := ok.check(); err != nil {
 		t.Fatal(err)
 	}
-	for _, st := range repetitionScheduleTypes {
-		if err := (Repetition{Rule: "FREQ=DAILY", ScheduleType: st, Anchor: "PlannedDate", CatchUp: true}).check(); err != nil {
+	for _, st := range ScheduleType("").names() {
+		if err := (Repetition{Rule: "FREQ=DAILY", ScheduleType: ScheduleType(st), Anchor: "PlannedDate", CatchUp: true}).check(); err != nil {
 			t.Errorf("%s: %v", st, err)
 		}
 	}
-	for _, a := range repetitionAnchors {
-		if err := (Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: a}).check(); err != nil {
+	for _, a := range Anchor("").names() {
+		if err := (Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: Anchor(a)}).check(); err != nil {
 			t.Errorf("%s: %v", a, err)
 		}
 	}
@@ -103,10 +103,10 @@ func TestRepetitionCheck(t *testing.T) {
 }
 
 func TestCheckEstimate(t *testing.T) {
-	if checkEstimate(0) != nil || checkEstimate(90) != nil {
+	if Minutes(0).check() != nil || Minutes(90).check() != nil {
 		t.Error("0 and positive minutes are valid")
 	}
-	if checkEstimate(-1) == nil {
+	if Minutes(-1).check() == nil {
 		t.Error("negative minutes must be rejected")
 	}
 }
@@ -175,7 +175,7 @@ func TestResolveBound(t *testing.T) {
 	from, to := "2026-11-18", "2026-11-18"
 	start, _ := resolveBound("x", &from, false)
 	end, _ := resolveBound("x", &to, true)
-	if got := end.Sub(start); got != 24*time.Hour-time.Second {
+	if got := end.t.Sub(start.t); got != 24*time.Hour-time.Second {
 		t.Errorf("a day spans start..end of the same local day, got %s", got)
 	}
 }
@@ -422,17 +422,17 @@ func TestProjectDecodesTypeEstimateRepetition(t *testing.T) {
 }
 
 func TestProjectTypeCheck(t *testing.T) {
-	for _, ok := range projectTypes {
-		if err := checkProjectType(ok); err != nil {
+	for _, ok := range ProjectType("").names() {
+		if err := checkEnum("type", ProjectType(ok)); err != nil {
 			t.Errorf("%s: %v", ok, err)
 		}
 	}
 	for _, bad := range []string{"", "parallel", "Single", "Sequential "} {
-		if err := checkProjectType(bad); err == nil {
+		if err := checkEnum("type", ProjectType(bad)); err == nil {
 			t.Errorf("%q: want error", bad)
 		}
 	}
-	if got := strings.Join(projectTypes, ","); got != "Parallel,Sequential,SingleActions" {
+	if got := strings.Join(ProjectType("").names(), ","); got != "Parallel,Sequential,SingleActions" {
 		t.Errorf("project types: %s", got)
 	}
 }

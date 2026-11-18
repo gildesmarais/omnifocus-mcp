@@ -72,7 +72,7 @@ func TestLiveReads(t *testing.T) {
 		if x.EstimatedMinutes != nil && *x.EstimatedMinutes <= 0 {
 			t.Fatalf("task %s estimatedMinutes %d", x.ID, *x.EstimatedMinutes)
 		}
-		if x.Repetition != nil && (!strings.HasPrefix(x.Repetition.Rule, "FREQ=") || !slices.Contains(repetitionScheduleTypes, x.Repetition.ScheduleType) || !slices.Contains(repetitionAnchors, x.Repetition.Anchor)) {
+		if x.Repetition != nil && (!strings.HasPrefix(x.Repetition.Rule, "FREQ=") || checkEnum("scheduleType", x.Repetition.ScheduleType) != nil || checkEnum("anchor", x.Repetition.Anchor) != nil) {
 			t.Fatalf("task %s repetition %+v", x.ID, *x.Repetition)
 		}
 		if x.Added == "" || x.Modified == "" {

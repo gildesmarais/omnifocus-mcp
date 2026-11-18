@@ -30,6 +30,9 @@ const (
 	statusActive Status = "Active"
 	statusOnHold Status = "OnHold"
 	statusDone   Status = "Done"
+
+	// statusDropped is no write's choice (drop is its own tool); list_projects filters by it.
+	statusDropped Status = "Dropped"
 )
 
 // StructAdd is one add item: a project, tag or folder.
@@ -46,15 +49,15 @@ type StructAdd struct {
 // add_tasks. Every field is a pointer or slice so that nil means "not sent":
 // a tag or folder is rejected for any project field the client sent, whatever its value.
 type ProjectAdd struct {
-	Type    *string  `json:"type,omitempty" jsonschema:"project only: Parallel (default), Sequential or SingleActions"`
-	Note    *string  `json:"note,omitempty" jsonschema:"project only"`
-	Flagged *bool    `json:"flagged,omitempty" jsonschema:"project only"`
-	Defer   *string  `json:"defer,omitempty" jsonschema:"project only"`
-	Due     *string  `json:"due,omitempty" jsonschema:"project only"`
-	Planned *string  `json:"planned,omitempty" jsonschema:"project only"`
-	Tags    []string `json:"tags,omitempty" jsonschema:"project only: tag ids or unambiguous names"`
+	Type    *ProjectType `json:"type,omitempty" jsonschema:"project only: Parallel (default), Sequential or SingleActions"`
+	Note    *string      `json:"note,omitempty" jsonschema:"project only"`
+	Flagged *bool        `json:"flagged,omitempty" jsonschema:"project only"`
+	Defer   *string      `json:"defer,omitempty" jsonschema:"project only"`
+	Due     *string      `json:"due,omitempty" jsonschema:"project only"`
+	Planned *string      `json:"planned,omitempty" jsonschema:"project only"`
+	Tags    []string     `json:"tags,omitempty" jsonschema:"project only: tag ids or unambiguous names"`
 
-	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty" jsonschema:"project only: 0 or more"`
+	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty" jsonschema:"project only: 0 or more"`
 	Repetition          *Repetition `json:"repetition,omitempty" jsonschema:"project only"`
 	CompletedByChildren *bool       `json:"completedByChildren,omitempty" jsonschema:"project only: completes when its last task does"`
 }
@@ -86,17 +89,11 @@ type StructEdit struct {
 // edit_tasks: omitted is unchanged, null clears Note, Defer, Due, Planned,
 // EstimatedMinutes and Repetition. As in ProjectAdd, nil or unset means "not sent".
 type ProjectEdit struct {
-	Type    *string        `json:"type,omitempty" jsonschema:"Parallel, Sequential or SingleActions"`
-	Note    NullableString `json:"note,omitzero"`
-	Flagged *bool          `json:"flagged,omitempty"`
-	Defer   NullableString `json:"defer,omitzero"`
-	Due     NullableString `json:"due,omitzero"`
-	Planned NullableString `json:"planned,omitzero"`
-	Tags    *TagEdit       `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names to add and remove"`
+	Type *ProjectType `json:"type,omitempty" jsonschema:"Parallel, Sequential or SingleActions"`
 
-	EstimatedMinutes    Nullable[int]        `json:"estimatedMinutes,omitzero" jsonschema:"0 or more; null clears"`
-	Repetition          Nullable[Repetition] `json:"repetition,omitzero" jsonschema:"null clears"`
-	CompletedByChildren *bool                `json:"completedByChildren,omitempty" jsonschema:"completes when its last task does"`
+	FactEdits
+	Tags                *TagEdit `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names to add and remove"`
+	CompletedByChildren *bool    `json:"completedByChildren,omitempty" jsonschema:"completes when its last task does"`
 
 	ReviewInterval *ReviewInterval `json:"reviewInterval,omitempty" jsonschema:"cannot be cleared; does not move nextReviewDate"`
 	NextReviewDate *string         `json:"nextReviewDate,omitempty" jsonschema:"OmniFocus truncates it to local midnight; not with reviewed"`
@@ -153,13 +150,14 @@ func checkStatus(allowed map[Kind][]Status, kind Kind, status Status) error {
 // errProjectOnly rejects the project-only struct v (ProjectAdd or ProjectEdit)
 // on another kind, naming the JSON fields the client sent. Sent means non-zero:
 // every field is a pointer, slice or Nullable, so only an omitted one is zero.
-// Walking the fields keeps new project fields covered without a second list.
+// Walking the visible fields (the embedded group's too) keeps new project
+// fields covered without a second list.
 func errProjectOnly(kind Kind, v any) error {
 	rv := reflect.ValueOf(v)
 	var sent []string
-	for i := range rv.NumField() {
-		if !rv.Field(i).IsZero() {
-			name, _, _ := strings.Cut(rv.Type().Field(i).Tag.Get("json"), ",")
+	for _, f := range reflect.VisibleFields(rv.Type()) {
+		if !f.Anonymous && !rv.FieldByIndex(f.Index).IsZero() {
+			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
 			sent = append(sent, name)
 		}
 	}
@@ -185,31 +183,20 @@ func (p StructEdit) changesNothing() bool {
 
 // check validates the add fields that need no lookup.
 func (a ProjectAdd) check() error {
-	errs := []error{checkDate("defer", text(a.Defer)), checkDate("due", text(a.Due)), checkDate("planned", text(a.Planned))}
+	errs := []error{facts{text(a.Defer), text(a.Due), text(a.Planned), a.EstimatedMinutes, a.Repetition}.check()}
 	if a.Type != nil {
-		errs = append(errs, checkProjectType(*a.Type))
-	}
-	if a.EstimatedMinutes != nil {
-		errs = append(errs, checkEstimate(*a.EstimatedMinutes))
-	}
-	if a.Repetition != nil {
-		errs = append(errs, a.Repetition.check())
+		errs = append(errs, checkEnum("type", *a.Type))
 	}
 	return errors.Join(errs...)
 }
 
-// check validates the edit fields that need no lookup: dates, type, estimate,
-// repetition and the review fields (reviewed excludes nextReviewDate, which OmniFocus derives).
+// check validates the edit fields that need no lookup: the shared facts, type
+// and the review fields (reviewed excludes nextReviewDate, which OmniFocus derives).
 func (p ProjectEdit) check() error {
-	errs := []error{checkEditDate("defer", p.Defer), checkEditDate("due", p.Due), checkEditDate("planned", p.Planned), checkDate("nextReviewDate", text(p.NextReviewDate))}
+	_, errNext := parseDate("nextReviewDate", text(p.NextReviewDate))
+	errs := []error{p.FactEdits.check(), errNext}
 	if p.Type != nil {
-		errs = append(errs, checkProjectType(*p.Type))
-	}
-	if m := p.EstimatedMinutes; m.Set && !m.Null {
-		errs = append(errs, checkEstimate(m.Value))
-	}
-	if r := p.Repetition; r.Set && !r.Null {
-		errs = append(errs, r.Value.check())
+		errs = append(errs, checkEnum("type", *p.Type))
 	}
 	if p.ReviewInterval != nil {
 		errs = append(errs, p.ReviewInterval.check())

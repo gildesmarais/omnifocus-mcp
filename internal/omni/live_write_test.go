@@ -197,7 +197,7 @@ func TestLiveTaskFieldWrites(t *testing.T) {
 
 	// Repeating task with a due date and an estimate.
 	rep := Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}
-	added := create(TaskAdd{Name: name + "-rep", Project: sandbox, Due: "2026-12-04", EstimatedMinutes: new(45), Repetition: &rep})
+	added := create(TaskAdd{Name: name + "-rep", Project: sandbox, Due: "2026-12-04", EstimatedMinutes: new(Minutes(45)), Repetition: &rep})
 	x, err := b.GetTask(ctx, added.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -210,11 +210,11 @@ func TestLiveTaskFieldWrites(t *testing.T) {
 	}
 
 	next := Repetition{Rule: "FREQ=DAILY;INTERVAL=2", ScheduleType: "FromCompletion", Anchor: "DeferDate", CatchUp: false}
-	x = edit(TaskEdit{ID: added.ID, EstimatedMinutes: Nullable[int]{Set: true, Value: 0}, Repetition: Nullable[Repetition]{Set: true, Value: next}})
+	x = edit(TaskEdit{ID: added.ID, EstimatedMinutes: Nullable[Minutes]{Set: true, Value: 0}, Repetition: Nullable[Repetition]{Set: true, Value: next}})
 	if x.Repetition == nil || *x.Repetition != next || x.EstimatedMinutes != nil && *x.EstimatedMinutes != 0 {
 		t.Fatalf("edit repetition: %+v", x)
 	}
-	x = edit(TaskEdit{ID: added.ID, EstimatedMinutes: Nullable[int]{Set: true, Null: true}, Repetition: Nullable[Repetition]{Set: true, Null: true}})
+	x = edit(TaskEdit{ID: added.ID, EstimatedMinutes: Nullable[Minutes]{Set: true, Null: true}, Repetition: Nullable[Repetition]{Set: true, Null: true}})
 	if x.Repetition != nil || x.EstimatedMinutes != nil {
 		t.Fatalf("clear: %+v", x)
 	}

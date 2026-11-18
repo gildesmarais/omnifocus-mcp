@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 )
 
 // ErrNotFound means no object has the requested id.
@@ -53,78 +52,47 @@ type Task struct {
 // rule moves (Anchor) and whether missed occurrences are skipped (CatchUp). It
 // owns the shape and its validation for every object that repeats.
 type Repetition struct {
-	Rule         string `json:"rule" jsonschema:"RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR"`
-	ScheduleType string `json:"scheduleType" jsonschema:"Regularly (fixed schedule) or FromCompletion (counts from completion)"`
-	Anchor       string `json:"anchor" jsonschema:"the date the rule moves: DeferDate, DueDate or PlannedDate"`
-	CatchUp      bool   `json:"catchUp" jsonschema:"skip occurrences already past"`
+	Rule         string       `json:"rule" jsonschema:"RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR"`
+	ScheduleType ScheduleType `json:"scheduleType" jsonschema:"Regularly (fixed schedule) or FromCompletion (counts from completion)"`
+	Anchor       Anchor       `json:"anchor" jsonschema:"the date the rule moves: DeferDate, DueDate or PlannedDate"`
+	CatchUp      bool         `json:"catchUp" jsonschema:"skip occurrences already past"`
 }
-
-// Names a write may set. OmniFocus also has a None schedule type, but creating a
-// rule with it throws, so it is not accepted. Go validates against these sets
-// before the scripts index OmniFocus's enums by name.
-var (
-	repetitionScheduleTypes = []string{"Regularly", "FromCompletion"}
-	repetitionAnchors       = []string{"DeferDate", "DueDate", "PlannedDate"}
-)
 
 func (r Repetition) check() error {
 	var errs []error
 	if strings.TrimSpace(r.Rule) == "" {
 		errs = append(errs, errors.New("repetition.rule: must not be empty"))
 	}
-	if !slices.Contains(repetitionScheduleTypes, r.ScheduleType) {
-		errs = append(errs, fmt.Errorf("repetition.scheduleType: %q must be one of %v", r.ScheduleType, repetitionScheduleTypes))
-	}
-	if !slices.Contains(repetitionAnchors, r.Anchor) {
-		errs = append(errs, fmt.Errorf("repetition.anchor: %q must be one of %v", r.Anchor, repetitionAnchors))
-	}
+	errs = append(errs, checkEnum("repetition.scheduleType", r.ScheduleType), checkEnum("repetition.anchor", r.Anchor))
 	return errors.Join(errs...)
 }
 
-// checkEstimate validates an estimate in minutes.
-func checkEstimate(m int) error {
-	if m < 0 {
-		return fmt.Errorf("estimatedMinutes: %d must be >= 0", m)
-	}
-	return nil
-}
-
-// ReviewInterval is how often a project is reviewed. Unit is one of days, weeks,
-// months or years (OmniFocus also reports hours on read).
+// ReviewInterval is how often a project is reviewed.
 type ReviewInterval struct {
-	Steps int    `json:"steps" jsonschema:"1 or more"`
-	Unit  string `json:"unit" jsonschema:"days, weeks, months or years"`
+	Steps Steps      `json:"steps" jsonschema:"1 or more"`
+	Unit  ReviewUnit `json:"unit" jsonschema:"days, weeks, months or years"`
 }
-
-// reviewUnits are the units a write may set; OmniFocus silently resets any other spelling to 1 week.
-var reviewUnits = []string{"days", "weeks", "months", "years"}
 
 func (r ReviewInterval) check() error {
-	if r.Steps < 1 {
-		return fmt.Errorf("reviewInterval.steps: %d must be >= 1", r.Steps)
-	}
-	if !slices.Contains(reviewUnits, r.Unit) {
-		return fmt.Errorf("reviewInterval.unit: %q must be one of %v", r.Unit, reviewUnits)
-	}
-	return nil
+	return errors.Join(r.Steps.check(), checkEnum("reviewInterval.unit", r.Unit))
 }
 
 // Project is a project with its folder, tags, dates and review schedule.
 type Project struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Note        string `json:"note,omitempty"`
-	Status      string `json:"status"`
-	Flagged     bool   `json:"flagged"`
-	Type        string `json:"type" jsonschema:"Parallel, Sequential or SingleActions"`
-	Available   bool   `json:"available"`
-	Blocked     bool   `json:"blocked"`
-	Folder      *Ref   `json:"folder,omitempty"`
-	Tags        []Ref  `json:"tags"`
-	Defer       string `json:"defer,omitempty"`
-	Due         string `json:"due,omitempty"`
-	Planned     string `json:"planned,omitempty"`
-	CompletedAt string `json:"completedAt,omitempty"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Note        string      `json:"note,omitempty"`
+	Status      string      `json:"status"`
+	Flagged     bool        `json:"flagged"`
+	Type        ProjectType `json:"type" jsonschema:"Parallel, Sequential or SingleActions"`
+	Available   bool        `json:"available"`
+	Blocked     bool        `json:"blocked"`
+	Folder      *Ref        `json:"folder,omitempty"`
+	Tags        []Ref       `json:"tags"`
+	Defer       string      `json:"defer,omitempty"`
+	Due         string      `json:"due,omitempty"`
+	Planned     string      `json:"planned,omitempty"`
+	CompletedAt string      `json:"completedAt,omitempty"`
 
 	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty"`
 	Repetition          *Repetition `json:"repetition,omitempty"`
@@ -133,29 +101,6 @@ type Project struct {
 	ReviewInterval *ReviewInterval `json:"reviewInterval,omitempty"`
 	NextReview     string          `json:"nextReviewDate,omitempty"`
 	LastReview     string          `json:"lastReviewDate,omitempty"`
-}
-
-// Project types, the one owner of the names: a project is Parallel,
-// Sequential (actions run in order) or SingleActions (a list of unrelated actions).
-var projectTypes = []string{"Parallel", "Sequential", "SingleActions"}
-
-// InputEnums gives the names a write input accepts, by JSON property name, from
-// the sets the validators check against: repetition scheduleType and anchor,
-// reviewInterval unit and project type. The tool schemas enumerate them from here.
-func InputEnums() map[string][]string {
-	return map[string][]string{
-		"scheduleType": slices.Clone(repetitionScheduleTypes),
-		"anchor":       slices.Clone(repetitionAnchors),
-		"unit":         slices.Clone(reviewUnits),
-		"type":         slices.Clone(projectTypes),
-	}
-}
-
-func checkProjectType(t string) error {
-	if !slices.Contains(projectTypes, t) {
-		return fmt.Errorf("type: %q must be one of %v", t, projectTypes)
-	}
-	return nil
 }
 
 // Tag is a tag with its open-task count.
@@ -207,7 +152,7 @@ type TaskFilter struct {
 
 // ProjectFilter holds list_projects filters.
 type ProjectFilter struct {
-	Status string `json:"status,omitempty" jsonschema:"Active, OnHold, Done or Dropped"`
+	Status Status `json:"status,omitempty" jsonschema:"Active, OnHold, Done or Dropped"`
 	Folder string `json:"folder,omitempty" jsonschema:"folder id or exact name; includes subfolders"`
 	Search string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
 	Limit  *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
@@ -215,52 +160,23 @@ type ProjectFilter struct {
 	ReviewDueBefore string `json:"review_due_before,omitempty" jsonschema:"next review on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 }
 
-var projectStatuses = map[string]bool{"Active": true, "OnHold": true, "Done": true, "Dropped": true}
+// filterStatuses are the project statuses list_projects filters by.
+var filterStatuses = []Status{statusActive, statusOnHold, statusDone, statusDropped}
 
-// dateOnly is the YYYY-MM-DD layout; in a write it means 00:00 local time.
-const dateOnly = "2006-01-02"
-
-// parseDate parses the accepted date forms: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS
-// (local time) or RFC 3339 with an offset. The empty string is the zero time.
-func parseDate(field, s string) (time.Time, error) {
-	if s == "" {
-		return time.Time{}, nil
+// resolveBound validates one range bound and rewrites *s in place to its full
+// timestamp (see date.bound). A nil or empty bound is absent (zero date); a
+// bad one leaves *s as sent.
+func resolveBound(field string, s *string, end bool) (date, error) {
+	if s == nil {
+		return date{}, nil
 	}
-	for _, layout := range []string{dateOnly, "2006-01-02T15:04:05"} {
-		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-			return t, nil
-		}
+	d, err := parseDate(field, *s)
+	if err != nil {
+		return d, err
 	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("%s: %q is not YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS or an RFC 3339 timestamp with offset (Z, +01:00)", field, s)
-}
-
-func checkDate(field, s string) error {
-	_, err := parseDate(field, s)
-	return err
-}
-
-// resolveBound validates one range bound and rewrites *s in place to a full
-// timestamp, so the scripts compare instants and never expand a date-only
-// value themselves. It is the one owner of the rule: a date-only value covers
-// its whole local day, so an _after bound starts at 00:00:00 and a _before
-// bound ends at 23:59:59 of it. A nil or empty bound is absent (zero time).
-func resolveBound(field string, s *string, end bool) (time.Time, error) {
-	if s == nil || *s == "" {
-		return time.Time{}, nil
-	}
-	t, err := parseDate(field, *s)
-	if err != nil || len(*s) != len(dateOnly) {
-		return t, err
-	}
-	if end {
-		*s += "T23:59:59"
-	} else {
-		*s += "T00:00:00"
-	}
-	return parseDate(field, *s)
+	d = d.bound(end)
+	*s = d.text
+	return d, nil
 }
 
 // resolveRange resolves the _after/_before pair of one date field (either may
@@ -272,7 +188,7 @@ func resolveRange(field string, after, before *string) error {
 	if err := errors.Join(errLo, errHi); err != nil {
 		return err
 	}
-	if !lo.IsZero() && !hi.IsZero() && lo.After(hi) {
+	if !lo.IsZero() && !hi.IsZero() && lo.t.After(hi.t) {
 		return fmt.Errorf("%s_after: %s is later than %s_before %s", field, given[0], field, given[1])
 	}
 	return nil
@@ -340,7 +256,7 @@ func (b *Bridge) GetTask(ctx context.Context, id string) (Task, error) {
 
 // ListProjects returns projects matching f.
 func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, error) {
-	if f.Status != "" && !projectStatuses[f.Status] {
+	if f.Status != "" && !slices.Contains(filterStatuses, f.Status) {
 		return nil, fmt.Errorf("status: %q must be Active, OnHold, Done or Dropped", f.Status)
 	}
 	_, errDue := resolveBound("review_due_before", &f.ReviewDueBefore, true)

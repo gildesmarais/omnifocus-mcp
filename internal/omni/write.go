@@ -20,6 +20,14 @@ type Nullable[T any] struct {
 // NullableString is a clearable string patch field.
 type NullableString = Nullable[string]
 
+// sent returns the value of a field set to a value; omitted and null give nil.
+func (n Nullable[T]) sent() *T {
+	if n.Set && !n.Null {
+		return &n.Value
+	}
+	return nil
+}
+
 // IsZero reports an omitted field, so `omitzero` leaves it out of the payload.
 func (n Nullable[T]) IsZero() bool { return !n.Set }
 
@@ -54,10 +62,67 @@ type TaskAdd struct {
 	Parent  string   `json:"parent,omitempty" jsonschema:"parent task id"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names"`
 
-	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty" jsonschema:"0 or more"`
+	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty" jsonschema:"0 or more"`
 	Repetition          *Repetition `json:"repetition,omitempty"`
 	Sequential          bool        `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
 	CompletedByChildren bool        `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
+}
+
+// FactEdits are the patch fields a task and a project share, with their one
+// validation. Omitted means unchanged; null clears. Fields whose description
+// differs by object (completedByChildren, tags) stay on the hosts, because the
+// descriptions are part of the tool contract.
+type FactEdits struct {
+	Note    NullableString `json:"note,omitzero"`
+	Flagged *bool          `json:"flagged,omitempty"`
+	Defer   NullableString `json:"defer,omitzero"`
+	Due     NullableString `json:"due,omitzero"`
+	Planned NullableString `json:"planned,omitzero"`
+
+	EstimatedMinutes Nullable[Minutes]    `json:"estimatedMinutes,omitzero" jsonschema:"0 or more; null clears"`
+	Repetition       Nullable[Repetition] `json:"repetition,omitzero" jsonschema:"null clears"`
+}
+
+// facts are the values a task or project write carries alike, as plain values
+// where empty or nil means not sent: the add forms and FactEdits each project
+// into it, so one rule set validates dates, estimate and repetition.
+type facts struct {
+	Defer, Due, Planned string
+	Estimate            *Minutes
+	Repetition          *Repetition
+}
+
+func (f facts) check() error {
+	var errs []error
+	for _, d := range [...]struct{ key, text string }{{"defer", f.Defer}, {"due", f.Due}, {"planned", f.Planned}} {
+		_, err := parseDate(d.key, d.text)
+		errs = append(errs, err)
+	}
+	if f.Estimate != nil {
+		errs = append(errs, f.Estimate.check())
+	}
+	if f.Repetition != nil {
+		errs = append(errs, f.Repetition.check())
+	}
+	return errors.Join(errs...)
+}
+
+// check validates the patch fields that need no lookup. A date set to the
+// empty string is rejected: null is how a patch clears one.
+func (f FactEdits) check() error {
+	var errs []error
+	for _, d := range [...]struct {
+		key string
+		n   NullableString
+	}{{"defer", f.Defer}, {"due", f.Due}, {"planned", f.Planned}} {
+		if d.n.Set && !d.n.Null && d.n.Value == "" {
+			errs = append(errs, fmt.Errorf("%s: empty date; use null to clear", d.key))
+		}
+	}
+	return errors.Join(append(errs, facts{
+		Defer: text(f.Defer.sent()), Due: text(f.Due.sent()), Planned: text(f.Planned.sent()),
+		Estimate: f.EstimatedMinutes.sent(), Repetition: f.Repetition.sent(),
+	}.check())...)
 }
 
 // Move is a move target: exactly one of Project, Inbox or Parent.
@@ -76,23 +141,17 @@ type TagEdit struct {
 // TaskEdit is one edit_tasks patch as received from the client. Omitted means
 // unchanged; null clears Note, Defer, Due, Planned, EstimatedMinutes and Repetition.
 type TaskEdit struct {
-	ID         string         `json:"id"`
-	Name       *string        `json:"name,omitempty"`
-	Note       NullableString `json:"note,omitzero"`
-	Flagged    *bool          `json:"flagged,omitempty"`
-	Defer      NullableString `json:"defer,omitzero"`
-	Due        NullableString `json:"due,omitzero"`
-	Planned    NullableString `json:"planned,omitzero"`
-	Complete   bool           `json:"complete,omitempty"`
-	Uncomplete bool           `json:"uncomplete,omitempty"`
-	Move       *Move          `json:"move,omitempty"`
-	Tags       *TagEdit       `json:"tags,omitempty"`
+	ID         string   `json:"id"`
+	Name       *string  `json:"name,omitempty"`
+	Complete   bool     `json:"complete,omitempty"`
+	Uncomplete bool     `json:"uncomplete,omitempty"`
+	Move       *Move    `json:"move,omitempty"`
+	Tags       *TagEdit `json:"tags,omitempty"`
 
-	EstimatedMinutes    Nullable[int]        `json:"estimatedMinutes,omitzero" jsonschema:"0 or more; null clears"`
-	Repetition          Nullable[Repetition] `json:"repetition,omitzero" jsonschema:"null clears"`
-	Sequential          *bool                `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
-	CompletedByChildren *bool                `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
-	Restore             bool                 `json:"restore,omitempty" jsonschema:"un-drop a dropped task; not with complete"`
+	FactEdits
+	Sequential          *bool `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
+	CompletedByChildren *bool `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
+	Restore             bool  `json:"restore,omitempty" jsonschema:"un-drop a dropped task; not with complete"`
 }
 
 // TaskResult is the outcome of one batch item. Task is the record after the write.
@@ -116,7 +175,7 @@ type addItem struct {
 	Parent  string   `json:"parent,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 
-	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty"`
+	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty"`
 	Repetition          *Repetition `json:"repetition,omitempty"`
 	Sequential          bool        `json:"sequential,omitempty"`
 	CompletedByChildren bool        `json:"completedByChildren,omitempty"`
@@ -125,24 +184,18 @@ type addItem struct {
 // patchItem is a validated edit_tasks patch in script form. Unset clearable
 // fields are omitted and cleared ones are null; the script tells them apart by key presence.
 type patchItem struct {
-	ID         string         `json:"id"`
-	Name       *string        `json:"name,omitempty"`
-	Note       NullableString `json:"note,omitzero"`
-	Flagged    *bool          `json:"flagged,omitempty"`
-	Defer      NullableString `json:"defer,omitzero"`
-	Due        NullableString `json:"due,omitzero"`
-	Planned    NullableString `json:"planned,omitzero"`
-	Complete   bool           `json:"complete,omitempty"`
-	Uncomplete bool           `json:"uncomplete,omitempty"`
-	Move       *Move          `json:"move,omitempty"`
-	TagsAdd    []string       `json:"tagsAdd,omitempty"`
-	TagsRemove []string       `json:"tagsRemove,omitempty"`
+	ID   string  `json:"id"`
+	Name *string `json:"name,omitempty"`
 
-	EstimatedMinutes    Nullable[int]        `json:"estimatedMinutes,omitzero"`
-	Repetition          Nullable[Repetition] `json:"repetition,omitzero"`
-	Sequential          *bool                `json:"sequential,omitempty"`
-	CompletedByChildren *bool                `json:"completedByChildren,omitempty"`
-	Restore             bool                 `json:"restore,omitempty"`
+	FactEdits
+	Complete            bool     `json:"complete,omitempty"`
+	Uncomplete          bool     `json:"uncomplete,omitempty"`
+	Move                *Move    `json:"move,omitempty"`
+	TagsAdd             []string `json:"tagsAdd,omitempty"`
+	TagsRemove          []string `json:"tagsRemove,omitempty"`
+	Sequential          *bool    `json:"sequential,omitempty"`
+	CompletedByChildren *bool    `json:"completedByChildren,omitempty"`
+	Restore             bool     `json:"restore,omitempty"`
 }
 
 // changesNothing reports a patch that sets no field besides its id.
@@ -200,14 +253,7 @@ func resolveTagEdit(te TagEdit, tags []Tag) (TagEdit, error) {
 
 // newAddItem validates a and returns its script form.
 func newAddItem(a TaskAdd, tags []Tag) (addItem, error) {
-	errs := []error{nonEmpty("name", a.Name), checkDate("defer", a.Defer), checkDate("due", a.Due), checkDate("planned", a.Planned)}
-	if a.EstimatedMinutes != nil {
-		errs = append(errs, checkEstimate(*a.EstimatedMinutes))
-	}
-	if a.Repetition != nil {
-		errs = append(errs, a.Repetition.check())
-	}
-	if err := errors.Join(errs...); err != nil {
+	if err := errors.Join(nonEmpty("name", a.Name), facts{a.Defer, a.Due, a.Planned, a.EstimatedMinutes, a.Repetition}.check()); err != nil {
 		return addItem{}, err
 	}
 	if a.Project != "" && a.Parent != "" {
@@ -221,32 +267,15 @@ func newAddItem(a TaskAdd, tags []Tag) (addItem, error) {
 		EstimatedMinutes: a.EstimatedMinutes, Repetition: a.Repetition, Sequential: a.Sequential, CompletedByChildren: a.CompletedByChildren}, nil
 }
 
-// checkEditDate validates one clearable date patch; unset and null pass.
-func checkEditDate(key string, n NullableString) error {
-	if !n.Set || n.Null {
-		return nil
-	}
-	if n.Value == "" {
-		return fmt.Errorf("%s: empty date; use null to clear", key)
-	}
-	return checkDate(key, n.Value)
-}
-
 // newPatchItem validates p and returns its script form. Nothing reaches a
 // script unless every rule holds.
 func newPatchItem(p TaskEdit, tags []Tag) (patchItem, error) {
 	if err := nonEmpty("id", p.ID); err != nil {
 		return patchItem{}, err
 	}
-	it := patchItem{ID: p.ID, Name: p.Name, Note: p.Note, Flagged: p.Flagged, Defer: p.Defer, Due: p.Due, Planned: p.Planned, Complete: p.Complete, Uncomplete: p.Uncomplete,
-		EstimatedMinutes: p.EstimatedMinutes, Repetition: p.Repetition, Sequential: p.Sequential, CompletedByChildren: p.CompletedByChildren, Restore: p.Restore}
-	errs := []error{checkEditDate("defer", p.Defer), checkEditDate("due", p.Due), checkEditDate("planned", p.Planned)}
-	if m := p.EstimatedMinutes; m.Set && !m.Null {
-		errs = append(errs, checkEstimate(m.Value))
-	}
-	if r := p.Repetition; r.Set && !r.Null {
-		errs = append(errs, r.Value.check())
-	}
+	it := patchItem{ID: p.ID, Name: p.Name, Complete: p.Complete, Uncomplete: p.Uncomplete, FactEdits: p.FactEdits,
+		Sequential: p.Sequential, CompletedByChildren: p.CompletedByChildren, Restore: p.Restore}
+	errs := []error{p.FactEdits.check()}
 	if p.Restore && p.Complete {
 		errs = append(errs, errors.New("restore and complete are mutually exclusive"))
 	}

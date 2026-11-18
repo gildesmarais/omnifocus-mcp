@@ -30,19 +30,19 @@ func TestStructAddValidation(t *testing.T) {
 		"folder status":   {StructAdd{Kind: "folder", Name: "x", Status: "Active"}, "status"},
 		"tag done":        {StructAdd{Kind: "tag", Name: "x", Status: "Done"}, "status"},
 		"project dropped": {StructAdd{Kind: "project", Name: "x", Status: "Dropped"}, "status"},
-		"tag type":        {StructAdd{Kind: "tag", Name: "x", Type: new("Sequential")}, "only for projects, not tag"},
+		"tag type":        {StructAdd{Kind: "tag", Name: "x", Type: new(ProjectType("Sequential"))}, "only for projects, not tag"},
 		"folder note":     {StructAdd{Kind: "folder", Name: "x", Note: new("n")}, "only for projects, not folder"},
 		"tag tags":        {StructAdd{Kind: "tag", Name: "x", Tags: []string{"home"}}, "only for projects"},
 		"folder repeat":   {StructAdd{Kind: "folder", Name: "x", Repetition: rep}, "only for projects"},
-		"tag estimate":    {StructAdd{Kind: "tag", Name: "x", EstimatedMinutes: new(5)}, "only for projects"},
+		"tag estimate":    {StructAdd{Kind: "tag", Name: "x", EstimatedMinutes: new(Minutes(5))}, "only for projects"},
 		"tag due":         {StructAdd{Kind: "tag", Name: "x", Due: new("2026-11-20")}, "only for projects"},
 		"tag flagged":     {StructAdd{Kind: "tag", Name: "x", Flagged: new(true)}, "only for projects"},
 		"tag cbc":         {StructAdd{Kind: "tag", Name: "x", CompletedByChildren: new(true)}, "only for projects"},
-		"bad type":        {StructAdd{Kind: "project", Name: "x", Type: new("sequential")}, "type"},
+		"bad type":        {StructAdd{Kind: "project", Name: "x", Type: new(ProjectType("sequential"))}, "type"},
 		"bad defer":       {StructAdd{Kind: "project", Name: "x", Defer: new("soon")}, "defer"},
 		"bad due":         {StructAdd{Kind: "project", Name: "x", Due: new("soon")}, "due"},
 		"bad planned":     {StructAdd{Kind: "project", Name: "x", Planned: new("soon")}, "planned"},
-		"negative est":    {StructAdd{Kind: "project", Name: "x", EstimatedMinutes: new(-1)}, "estimatedMinutes"},
+		"negative est":    {StructAdd{Kind: "project", Name: "x", EstimatedMinutes: new(Minutes(-1))}, "estimatedMinutes"},
 		"bad repetition":  {StructAdd{Kind: "project", Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY"}}, "repetition"},
 		"unknown tag":     {StructAdd{Kind: "project", Name: "x", Tags: []string{"nope"}}, "unknown tag"},
 		"ambiguous tag":   {StructAdd{Kind: "project", Name: "x", Tags: []string{"dup"}}, "ambiguous"},
@@ -51,21 +51,21 @@ func TestStructAddValidation(t *testing.T) {
 			t.Errorf("%s: want error containing %q, got %v", name, tc.want, err)
 		}
 	}
-	for _, typ := range projectTypes {
-		if _, err := validAdd(StructAdd{Kind: "project", Name: "x", Type: new(typ)}, nil); err != nil {
+	for _, typ := range ProjectType("").names() {
+		if _, err := validAdd(StructAdd{Kind: "project", Name: "x", Type: new(ProjectType(typ))}, nil); err != nil {
 			t.Errorf("type %s: %v", typ, err)
 		}
 	}
 	full, err := validAdd(StructAdd{Kind: "project", Name: "p",
-		Type: new("SingleActions"), Note: new("n"), Flagged: new(true), Defer: new("2026-11-19"), Due: new("2026-11-20"), Planned: new("2026-11-21"),
-		Tags: []string{"home", "work"}, EstimatedMinutes: new(0), Repetition: rep, CompletedByChildren: new(true)}, testTags)
+		Type: new(ProjectType("SingleActions")), Note: new("n"), Flagged: new(true), Defer: new("2026-11-19"), Due: new("2026-11-20"), Planned: new("2026-11-21"),
+		Tags: []string{"home", "work"}, EstimatedMinutes: new(Minutes(0)), Repetition: rep, CompletedByChildren: new(true)}, testTags)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := wire(t, full), `{"kind":"project","name":"p","type":"SingleActions","note":"n","flagged":true,"defer":"2026-11-19","due":"2026-11-20","planned":"2026-11-21","tags":["t1","t2"],"estimatedMinutes":0,"repetition":{"rule":"FREQ=DAILY","scheduleType":"Regularly","anchor":"DueDate","catchUp":false},"completedByChildren":true}`; got != want {
 		t.Errorf("project add:\n got %s\nwant %s", got, want)
 	}
-	it, err := validAdd(StructAdd{Kind: "project", Name: "p", Parent: "f1", Status: "OnHold", Type: new("Sequential")}, nil)
+	it, err := validAdd(StructAdd{Kind: "project", Name: "p", Parent: "f1", Status: "OnHold", Type: new(ProjectType("Sequential"))}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,8 +387,8 @@ func TestEditStructureProjectFieldsPerItem(t *testing.T) {
 func TestAddStructureProjectFieldsPerItem(t *testing.T) {
 	r := &route{tags: `[{"id":"t1","name":"home"}]`, res: `[{"id":"n","kind":"project","ok":true,"name":"P","status":"Active"}]`}
 	got, err := (&Bridge{Runner: r}).AddStructure(context.Background(), []StructAdd{
-		{Kind: "project", Name: "P", Type: new("Sequential"), Tags: []string{"home"}, EstimatedMinutes: new(20), Due: new("2026-11-20")},
-		{Kind: "folder", Name: "F", Type: new("Parallel")},
+		{Kind: "project", Name: "P", Type: new(ProjectType("Sequential")), Tags: []string{"home"}, EstimatedMinutes: new(Minutes(20)), Due: new("2026-11-20")},
+		{Kind: "folder", Name: "F", Type: new(ProjectType("Parallel"))},
 	})
 	if err != nil || len(got) != 2 || !got[0].OK || got[1].OK || !strings.Contains(got[1].Error, "only for projects") {
 		t.Fatalf("%+v %v", got, err)
@@ -431,13 +431,13 @@ func TestStructTagLookupOnlyWhenNeeded(t *testing.T) {
 
 // A null clears the estimate: the value it carries is never validated.
 func TestProjectEditNullEstimateIsNotChecked(t *testing.T) {
-	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Set: true, Null: true, Value: -5}}).check(); err != nil {
+	if err := (ProjectEdit{EstimatedMinutes: Nullable[Minutes]{Set: true, Null: true, Value: -5}}).check(); err != nil {
 		t.Fatal(err)
 	}
-	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Value: -5}}).check(); err != nil {
+	if err := (ProjectEdit{EstimatedMinutes: Nullable[Minutes]{Value: -5}}).check(); err != nil {
 		t.Fatal(err)
 	}
-	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Set: true, Value: -5}}).check(); err == nil {
+	if err := (ProjectEdit{EstimatedMinutes: Nullable[Minutes]{Set: true, Value: -5}}).check(); err == nil {
 		t.Fatal("want error for a set negative estimate")
 	}
 }

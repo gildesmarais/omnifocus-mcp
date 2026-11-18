@@ -78,12 +78,12 @@ func TestFieldWriterHasOneOwner(t *testing.T) {
 
 func TestDatesAcceptOffsets(t *testing.T) {
 	for _, ok := range []string{"2026-11-18", "2026-11-18T08:00:00", "2026-11-18T08:00:00Z", "2026-11-18T08:00:00+01:00", "2026-11-18T08:00:00-05:00"} {
-		if err := checkDate("due", ok); err != nil {
+		if _, err := parseDate("due", ok); err != nil {
 			t.Errorf("%s: %v", ok, err)
 		}
 	}
 	for _, bad := range []string{"2026-11-18T08:00:00+0100", "2026-11-18 08:00", "tomorrow"} {
-		if checkDate("due", bad) == nil {
+		if _, err := parseDate("due", bad); err == nil {
 			t.Errorf("%s: want error", bad)
 		}
 	}
