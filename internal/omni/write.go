@@ -109,10 +109,21 @@ func (f FactAdds) facts() facts {
 
 func (f FactAdds) check() error { return f.facts().check() }
 
+// dateKeys are the date fields a task and a project share: the one list every
+// date rule walks. The dates() projections must follow its order; their array
+// length is its length, so a fourth date fails to compile until they do.
+var dateKeys = [...]string{"defer", "due", "planned"}
+
+func (f facts) dates() [len(dateKeys)]string { return [...]string{f.Defer, f.Due, f.Planned} }
+
+func (f FactEdits) dates() [len(dateKeys)]NullableString {
+	return [...]NullableString{f.Defer, f.Due, f.Planned}
+}
+
 func (f facts) check() error {
 	var errs []error
-	for _, d := range [...]struct{ key, text string }{{"defer", f.Defer}, {"due", f.Due}, {"planned", f.Planned}} {
-		_, err := parseDate(d.key, d.text)
+	for i, d := range f.dates() {
+		_, err := parseDate(dateKeys[i], d)
 		errs = append(errs, err)
 	}
 	if f.Estimate != nil {
@@ -128,12 +139,9 @@ func (f facts) check() error {
 // empty string is rejected: null is how a patch clears one.
 func (f FactEdits) check() error {
 	var errs []error
-	for _, d := range [...]struct {
-		key string
-		n   NullableString
-	}{{"defer", f.Defer}, {"due", f.Due}, {"planned", f.Planned}} {
-		if d.n.Set && !d.n.Null && d.n.Value == "" {
-			errs = append(errs, fmt.Errorf("%s: empty date; use null to clear", d.key))
+	for i, d := range f.dates() {
+		if d.Set && !d.Null && d.Value == "" {
+			errs = append(errs, fmt.Errorf("%s: empty date; use null to clear", dateKeys[i]))
 		}
 	}
 	return errors.Join(append(errs, facts{

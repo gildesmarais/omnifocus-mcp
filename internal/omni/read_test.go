@@ -159,25 +159,18 @@ func TestResolveBound(t *testing.T) {
 		"Z stays":                                 {"2026-11-18T08:30:00Z", false, "2026-11-18T08:30:00Z"},
 		"empty stays empty":                       {"", true, ""},
 	} {
-		s := tc.in
-		if _, err := resolveBound("x", &s, tc.end); err != nil || s != tc.want {
-			t.Errorf("%s: got %q err %v, want %q", name, s, err, tc.want)
+		if got, err := resolveBound("x", tc.in, tc.end); err != nil || got.text != tc.want {
+			t.Errorf("%s: got %q err %v, want %q", name, got.text, err, tc.want)
 		}
 	}
-	if _, err := resolveBound("x", nil, true); err != nil {
-		t.Errorf("nil bound is absent: %v", err)
+	if _, err := resolveBound("x_before", "2026-11-18 08:00", true); err == nil || !strings.Contains(err.Error(), "x_before") {
+		t.Errorf("bad date: want error naming the field, got %v", err)
 	}
-	bad := "2026-11-18 08:00"
-	if _, err := resolveBound("x_before", &bad, true); err == nil || !strings.Contains(err.Error(), "x_before") || bad != "2026-11-18 08:00" {
-		t.Errorf("bad date: want error naming the field and no rewrite, got %v %q", err, bad)
-	}
-	var none string
-	if got, _ := resolveBound("x", &none, false); !got.IsZero() {
+	if got, _ := resolveBound("x", "", false); !got.IsZero() {
 		t.Error("empty bound resolves to the zero time")
 	}
-	from, to := "2026-11-18", "2026-11-18"
-	start, _ := resolveBound("x", &from, false)
-	end, _ := resolveBound("x", &to, true)
+	start, _ := resolveBound("x", "2026-11-18", false)
+	end, _ := resolveBound("x", "2026-11-18", true)
 	if got := end.t.Sub(start.t); got != 24*time.Hour-time.Second {
 		t.Errorf("a day spans start..end of the same local day, got %s", got)
 	}
@@ -213,6 +206,14 @@ func TestResolveRange(t *testing.T) {
 	after := "2026-11-18"
 	if err := resolveRange("added", &after, nil); err != nil || after != "2026-11-18T00:00:00" {
 		t.Errorf("nil before: %v %q", err, after)
+	}
+	lo, hi := "2026-11-18", "2026-11-18"
+	if err := resolveRange("due", &lo, &hi); err != nil || lo != "2026-11-18T00:00:00" || hi != "2026-11-18T23:59:59" {
+		t.Errorf("both bounds are rewritten to the day's first and last second: %v %q %q", err, lo, hi)
+	}
+	lo, hi = "2026-11-19", "2026-11-18"
+	if err := resolveRange("due", &lo, &hi); err == nil || lo != "2026-11-19" || hi != "2026-11-18" {
+		t.Errorf("a rejected range stays as sent: %v %q %q", err, lo, hi)
 	}
 }
 

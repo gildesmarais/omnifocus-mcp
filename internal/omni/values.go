@@ -36,6 +36,14 @@ func checkBound[T bounded](field string, v T) error {
 	return nil
 }
 
+// text is the value of an optional string field; unset is empty.
+func text(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // ScheduleType is how a repeat rule schedules the next occurrence. OmniFocus
 // also has a None type, but creating a rule with it throws, so a write rejects it.
 type ScheduleType string

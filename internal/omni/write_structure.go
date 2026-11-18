@@ -160,14 +160,6 @@ func errProjectOnly[T ProjectAdd | ProjectEdit](kind Kind, v T) error {
 	return fmt.Errorf("%s: only for projects, not %s", strings.Join(sent, ", "), kind)
 }
 
-// text is the value of an optional string field; unset is empty.
-func text(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // changesNothing reports a patch that sets no field besides kind and id.
 func (p StructEdit) changesNothing() bool {
 	p.Kind, p.ID = "", ""

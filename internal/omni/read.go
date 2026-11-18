@@ -164,33 +164,31 @@ type ProjectFilter struct {
 // project can be written with, plus Dropped.
 var filterStatuses = append(slices.Clone(addStatuses[kindProject]), statusDropped)
 
-// resolveBound validates one range bound and rewrites *s in place to its full
-// timestamp (see date.bound). A nil or empty bound is absent (zero date); a
-// bad one leaves *s as sent.
-func resolveBound(field string, s *string, end bool) (date, error) {
-	if s == nil {
-		return date{}, nil
-	}
-	d, err := parseDate(field, *s)
-	if err != nil {
-		return d, err
-	}
-	d = d.bound(end)
-	*s = d.text
-	return d, nil
+// resolveBound parses one range bound sent as s and returns it as the date
+// whose text is the full timestamp (see date.bound). An empty bound is absent
+// (zero date). It changes nothing; callers store the result.
+func resolveBound(field, s string, end bool) (date, error) {
+	d, err := parseDate(field, s)
+	return d.bound(end), err
 }
 
 // resolveRange resolves the _after/_before pair of one date field (either may
-// be nil) and rejects an _after later than its _before.
+// be nil), rewrites both to full timestamps and rejects an _after later than
+// its _before. On error neither is rewritten.
 func resolveRange(field string, after, before *string) error {
-	given := [2]string{text(after), text(before)} // as the client sent them, for the error
-	lo, errLo := resolveBound(field+"_after", after, false)
-	hi, errHi := resolveBound(field+"_before", before, true)
+	lo, errLo := resolveBound(field+"_after", text(after), false)
+	hi, errHi := resolveBound(field+"_before", text(before), true)
 	if err := errors.Join(errLo, errHi); err != nil {
 		return err
 	}
 	if !lo.IsZero() && !hi.IsZero() && lo.t.After(hi.t) {
-		return fmt.Errorf("%s_after: %s is later than %s_before %s", field, given[0], field, given[1])
+		return fmt.Errorf("%s_after: %s is later than %s_before %s", field, text(after), field, text(before))
+	}
+	if after != nil {
+		*after = lo.text
+	}
+	if before != nil {
+		*before = hi.text
 	}
 	return nil
 }
@@ -260,10 +258,11 @@ func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, 
 	if f.Status != "" && !slices.Contains(filterStatuses, f.Status) {
 		return nil, fmt.Errorf("status: %q must be one of %v", f.Status, filterStatuses)
 	}
-	_, errDue := resolveBound("review_due_before", &f.ReviewDueBefore, true)
+	due, errDue := resolveBound("review_due_before", f.ReviewDueBefore, true)
 	if err := errors.Join(errDue, checkLimit(f.Limit)); err != nil {
 		return nil, err
 	}
+	f.ReviewDueBefore = due.text
 	var out []Project
 	if err := b.call(ctx, scriptProjects, f, &out); err != nil {
 		return nil, err
