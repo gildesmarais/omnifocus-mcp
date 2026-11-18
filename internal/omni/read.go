@@ -74,7 +74,7 @@ type ReviewInterval struct {
 }
 
 func (r ReviewInterval) check() error {
-	return errors.Join(r.Steps.check(), checkEnum("reviewInterval.unit", r.Unit))
+	return errors.Join(checkBound("reviewInterval.steps", r.Steps), checkEnum("reviewInterval.unit", r.Unit))
 }
 
 // Project is a project with its folder, tags, dates and review schedule.

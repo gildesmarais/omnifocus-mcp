@@ -99,7 +99,7 @@ func (f facts) check() error {
 		errs = append(errs, err)
 	}
 	if f.Estimate != nil {
-		errs = append(errs, f.Estimate.check())
+		errs = append(errs, checkBound("estimatedMinutes", *f.Estimate))
 	}
 	if f.Repetition != nil {
 		errs = append(errs, f.Repetition.check())

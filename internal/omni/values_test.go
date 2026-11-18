@@ -7,52 +7,26 @@ import (
 	"time"
 )
 
-// Every closed-set type reachable from a write input is in InputSchemas, so no
-// enum or lower bound can silently miss the tool schema.
-func TestInputSchemasCoverEveryClosedSetField(t *testing.T) {
-	registered := InputSchemas()
-	seen := map[reflect.Type]bool{}
-	var walk func(reflect.Type)
-	walk = func(rt reflect.Type) {
-		for rt.Kind() == reflect.Pointer || rt.Kind() == reflect.Slice {
-			rt = rt.Elem()
-		}
-		if seen[rt] {
-			return
-		}
-		seen[rt] = true
-		_, isEnum := reflect.New(rt).Elem().Interface().(interface{ names() []string })
-		if isEnum || rt == reflect.TypeFor[Minutes]() || rt == reflect.TypeFor[Steps]() {
-			if registered[rt] == nil {
-				t.Errorf("%s is a closed-set input type missing from InputSchemas", rt)
-			}
-		}
-		if rt.Kind() == reflect.Struct {
-			for _, f := range reflect.VisibleFields(rt) {
-				walk(f.Type)
-			}
-		}
+// InputRules finds every rule-carrying type through pointers, slices, embedded
+// groups and Nullable wrappers, and reports exactly the facts the types own.
+func TestInputRulesReadTheTypes(t *testing.T) {
+	names := func(r Rule) string { return strings.Join(r.Names, ",") }
+	task := InputRules(reflect.TypeFor[TaskAdd]())
+	if len(task) != 3 || names(task[reflect.TypeFor[ScheduleType]()]) != "Regularly,FromCompletion" || names(task[reflect.TypeFor[Anchor]()]) != "DeferDate,DueDate,PlannedDate" {
+		t.Errorf("task add rules: %v", task)
 	}
-	for _, in := range []reflect.Type{reflect.TypeFor[TaskAdd](), reflect.TypeFor[TaskEdit](), reflect.TypeFor[StructAdd](), reflect.TypeFor[StructEdit]()} {
-		walk(in)
-	}
-	for rt := range registered {
-		if !seen[rt] {
-			t.Errorf("%s is registered but no write input reaches it", rt)
-		}
-	}
-}
-
-func TestInputSchemasCarryTheRules(t *testing.T) {
-	s := InputSchemas()
-	if got := s[reflect.TypeFor[Anchor]()].Enum; len(got) != 3 || got[0] != "DeferDate" {
-		t.Errorf("anchor enum: %v", got)
-	}
-	if m := s[reflect.TypeFor[Minutes]()].Minimum; m == nil || *m != 0 {
+	if m := task[reflect.TypeFor[Minutes]()].Min; m == nil || *m != 0 {
 		t.Errorf("minutes minimum: %v", m)
 	}
-	if m := s[reflect.TypeFor[Steps]()].Minimum; m == nil || *m != 1 {
-		t.Errorf("steps minimum: %v", m)
+	edit := InputRules(reflect.TypeFor[StructEdit]())
+	if len(edit) != 6 || names(edit[reflect.TypeFor[ReviewUnit]()]) != "days,weeks,months,years" || names(edit[reflect.TypeFor[ProjectType]()]) != "Parallel,Sequential,SingleActions" {
+		t.Errorf("structure edit rules: %v", edit)
+	}
+	if m := edit[reflect.TypeFor[Steps]()].Min; m == nil || *m != 1 || edit[reflect.TypeFor[Steps]()].Names != nil {
+		t.Errorf("steps rule: %v", edit[reflect.TypeFor[Steps]()])
+	}
+	if got := InputRules(reflect.TypeFor[StructRef]()); len(got) != 0 {
+		t.Errorf("an input without closed sets has no rules: %v", got)
 	}
 	if err := checkEnum("unit", ReviewUnit("week")); err == nil || !strings.Contains(err.Error(), `unit: "week" must be one of [days weeks months years]`) {
 		t.Errorf("enum error: %v", err)

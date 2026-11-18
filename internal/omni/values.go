@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
-
-	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // enum is a string type that owns its closed set of names. The set is the one
@@ -15,10 +13,25 @@ type enum interface {
 	names() []string
 }
 
+// bounded is an integer type that owns its lower bound, the way enum owns its
+// names: validation checks against it and the input schema carries it.
+type bounded interface {
+	~int
+	minimum() int
+}
+
 // checkEnum rejects a name outside the type's closed set.
 func checkEnum[T enum](field string, v T) error {
 	if all := v.names(); !slices.Contains(all, string(v)) {
 		return fmt.Errorf("%s: %q must be one of %v", field, string(v), all)
+	}
+	return nil
+}
+
+// checkBound rejects a value below the type's lower bound.
+func checkBound[T bounded](field string, v T) error {
+	if min := v.minimum(); int(v) < min {
+		return fmt.Errorf("%s: %d must be >= %d", field, int(v), min)
 	}
 	return nil
 }
@@ -46,54 +59,64 @@ type ProjectType string
 
 func (ProjectType) names() []string { return []string{"Parallel", "Sequential", "SingleActions"} }
 
-// Lower bounds of the counted values below, shared by validation and schema.
-const (
-	minMinutes = 0
-	minSteps   = 1
-)
-
 // Minutes is an estimate in minutes, 0 or more.
 type Minutes int
 
-func (m Minutes) check() error {
-	if m < minMinutes {
-		return fmt.Errorf("estimatedMinutes: %d must be >= %d", int(m), minMinutes)
-	}
-	return nil
-}
+func (Minutes) minimum() int { return 0 }
 
 // Steps is how many units make up a review interval, 1 or more.
 type Steps int
 
-func (s Steps) check() error {
-	if s < minSteps {
-		return fmt.Errorf("reviewInterval.steps: %d must be >= %d", int(s), minSteps)
-	}
-	return nil
+func (Steps) minimum() int { return 1 }
+
+// Rule is what a write-input type enforces beyond its Go type, as plain facts:
+// the allowed names of a closed string set, or the lower bound of a counted
+// value. The same facts back validation, so the transport schema (built in
+// internal/server) cannot drift from it.
+type Rule struct {
+	Names []string // allowed values; nil for a counted value
+	Min   *int     // lower bound; nil for a closed set
 }
 
-// InputSchemas gives the schema of every write-input type that carries a rule
-// the validators enforce: the enum names and the lower bounds. Keyed by Go type
-// (for jsonschema.ForOptions.TypeSchemas), so a renamed property keeps its rule
-// and a violation fails at the schema before any script runs. It returns fresh
-// schemas on every call.
-func InputSchemas() map[reflect.Type]*jsonschema.Schema {
-	atLeast := func(min float64) *jsonschema.Schema { return &jsonschema.Schema{Type: "integer", Minimum: &min} }
-	return map[reflect.Type]*jsonschema.Schema{
-		reflect.TypeFor[ScheduleType](): enumSchema[ScheduleType](),
-		reflect.TypeFor[Anchor]():       enumSchema[Anchor](),
-		reflect.TypeFor[ReviewUnit]():   enumSchema[ReviewUnit](),
-		reflect.TypeFor[ProjectType]():  enumSchema[ProjectType](),
-		reflect.TypeFor[Minutes]():      atLeast(minMinutes),
-		reflect.TypeFor[Steps]():        atLeast(minSteps),
+// ruleOf reads the rule a type carries, if any, off its enum or bounded methods.
+func ruleOf(rt reflect.Type) (Rule, bool) {
+	v := reflect.New(rt).Elem().Interface()
+	var r Rule
+	if e, ok := v.(interface{ names() []string }); ok {
+		r.Names = e.names()
 	}
+	if b, ok := v.(interface{ minimum() int }); ok {
+		m := b.minimum()
+		r.Min = &m
+	}
+	return r, r.Names != nil || r.Min != nil
 }
 
-func enumSchema[T enum]() *jsonschema.Schema {
-	var zero T
-	s := &jsonschema.Schema{Type: "string"}
-	for _, n := range zero.names() {
-		s.Enum = append(s.Enum, n)
+// InputRules returns the rule of every closed-set or bounded type reachable
+// from root (a write input), keyed by Go type so a renamed property keeps its
+// rule. It discovers by walking the fields, so a new enum or bounded type is
+// covered by being used.
+func InputRules(root reflect.Type) map[reflect.Type]Rule {
+	rules := map[reflect.Type]Rule{}
+	seen := map[reflect.Type]bool{}
+	var walk func(reflect.Type)
+	walk = func(rt reflect.Type) {
+		for rt.Kind() == reflect.Pointer || rt.Kind() == reflect.Slice {
+			rt = rt.Elem()
+		}
+		if seen[rt] {
+			return
+		}
+		seen[rt] = true
+		if r, ok := ruleOf(rt); ok {
+			rules[rt] = r
+		}
+		if rt.Kind() == reflect.Struct {
+			for _, f := range reflect.VisibleFields(rt) {
+				walk(f.Type)
+			}
+		}
 	}
-	return s
+	walk(root)
+	return rules
 }

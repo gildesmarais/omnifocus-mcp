@@ -103,11 +103,14 @@ func TestRepetitionCheck(t *testing.T) {
 }
 
 func TestCheckEstimate(t *testing.T) {
-	if Minutes(0).check() != nil || Minutes(90).check() != nil {
+	if checkBound("m", Minutes(0)) != nil || checkBound("m", Minutes(90)) != nil {
 		t.Error("0 and positive minutes are valid")
 	}
-	if Minutes(-1).check() == nil {
-		t.Error("negative minutes must be rejected")
+	if err := checkBound("estimatedMinutes", Minutes(-1)); err == nil || err.Error() != "estimatedMinutes: -1 must be >= 0" {
+		t.Errorf("negative minutes must be rejected naming the field: %v", err)
+	}
+	if err := checkBound("reviewInterval.steps", Steps(0)); err == nil || err.Error() != "reviewInterval.steps: 0 must be >= 1" {
+		t.Errorf("steps below 1 must be rejected naming the field: %v", err)
 	}
 }
 

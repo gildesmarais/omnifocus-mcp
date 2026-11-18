@@ -58,14 +58,38 @@ func clearable(s *jsonschema.Schema) *jsonschema.Schema {
 	return c
 }
 
-// writeSchema builds In's input schema. The rules omni validates per item
-// (enum names, lower bounds) come from the types themselves, omni.InputSchemas,
-// so a violation fails the whole call at the schema before any script runs.
-// Null is accepted only where it means "clear": the omni.Nullable fields, as
-// value-or-null. Every other null fails validation. withClear false (add
-// tools: nothing to clear) makes the Nullable fields plain too.
+// typeSchemas turns the rules omni reports for the roots (enum names, lower
+// bounds) into schemas, keyed by Go type for jsonschema.ForOptions.TypeSchemas.
+// The types are the one owner of the rules, so a violation fails the whole call
+// at the schema before any script runs.
+func typeSchemas(roots ...reflect.Type) map[reflect.Type]*jsonschema.Schema {
+	types := map[reflect.Type]*jsonschema.Schema{}
+	for _, root := range roots {
+		for t, r := range omni.InputRules(root) {
+			types[t] = ruleSchema(r)
+		}
+	}
+	return types
+}
+
+func ruleSchema(r omni.Rule) *jsonschema.Schema {
+	if r.Min != nil {
+		min := float64(*r.Min)
+		return &jsonschema.Schema{Type: "integer", Minimum: &min}
+	}
+	s := &jsonschema.Schema{Type: "string"}
+	for _, n := range r.Names {
+		s.Enum = append(s.Enum, n)
+	}
+	return s
+}
+
+// writeSchema builds In's input schema, with the rules of the types it reaches
+// (typeSchemas). Null is accepted only where it means "clear": the
+// omni.Nullable fields, as value-or-null. Every other null fails validation.
+// withClear false (add tools: nothing to clear) makes the Nullable fields plain too.
 func writeSchema[In any](withClear bool) *jsonschema.Schema {
-	types := omni.InputSchemas()
+	types := typeSchemas(reflect.TypeFor[In](), reflect.TypeFor[omni.Repetition](), reflect.TypeFor[omni.Minutes]())
 	rep, err := jsonschema.For[omni.Repetition](&jsonschema.ForOptions{TypeSchemas: types})
 	if err != nil {
 		panic(err)
