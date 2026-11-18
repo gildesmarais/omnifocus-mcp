@@ -36,13 +36,17 @@ type idIn struct {
 }
 
 // withLimitDefault builds the input schema for In and sets limit's default,
-// so an omitted limit becomes 50 while an explicit null stays "all".
+// so an omitted limit becomes 50 while an explicit null stays "all". Null is
+// accepted nowhere else: a null filter fails validation instead of reading as unset.
 func withLimitDefault[In any]() *jsonschema.Schema {
 	sc, err := jsonschema.For[In](nil)
 	if err != nil {
 		panic(err)
 	}
-	sc.Properties["limit"].Default = json.RawMessage("50")
+	limit := sc.Properties["limit"]
+	limit.Default = json.RawMessage("50")
+	limit.Extra = map[string]any{clearMark: true}
+	stripNull(sc)
 	return sc
 }
 

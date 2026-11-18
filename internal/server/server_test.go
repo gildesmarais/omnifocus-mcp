@@ -355,6 +355,49 @@ func TestEditProjectAndFolderRestoreOverMCP(t *testing.T) {
 	}
 }
 
+// What omni validates per item is also in the schema (enums, minimums, no stray
+// null), so a violation fails the whole call before any script runs.
+func TestSchemaRejectsEnumMinimumAndNullBeforeAnyScript(t *testing.T) {
+	rep := func(k, v string) map[string]any {
+		r := map[string]any{"rule": "FREQ=DAILY", "scheduleType": "Regularly", "anchor": "DueDate", "catchUp": false}
+		r[k] = v
+		return r
+	}
+	for name, c := range map[string]struct {
+		tool string
+		args map[string]any
+	}{
+		"task scheduleType":    {"add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "T", "repetition": rep("scheduleType", "None")}}}},
+		"task anchor":          {"add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "T", "repetition": rep("anchor", "dueDate")}}}},
+		"task estimate":        {"add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "T", "estimatedMinutes": -1}}}},
+		"edit task anchor":     {"edit_tasks", map[string]any{"patches": []any{map[string]any{"id": "a", "repetition": rep("anchor", "Never")}}}},
+		"project type":         {"add", map[string]any{"items": []any{map[string]any{"kind": "project", "name": "P", "type": "parallel"}}}},
+		"project estimate":     {"add", map[string]any{"items": []any{map[string]any{"kind": "project", "name": "P", "estimatedMinutes": -1}}}},
+		"edit project type":    {"edit", map[string]any{"items": []any{map[string]any{"kind": "project", "id": "a", "type": "Serial"}}}},
+		"review unit":          {"edit", map[string]any{"items": []any{map[string]any{"kind": "project", "id": "a", "reviewInterval": map[string]any{"steps": 1, "unit": "week"}}}}},
+		"review steps":         {"edit", map[string]any{"items": []any{map[string]any{"kind": "project", "id": "a", "reviewInterval": map[string]any{"steps": 0, "unit": "weeks"}}}}},
+		"drop null items":      {"drop", map[string]any{"items": nil}},
+		"delete null items":    {"delete", map[string]any{"items": nil}},
+		"list_tasks flagged":   {"list_tasks", map[string]any{"flagged": nil}},
+		"list_tasks inbox":     {"list_tasks", map[string]any{"inbox": nil}},
+		"list_projects status": {"list_projects", map[string]any{"status": nil}},
+	} {
+		if _, r, src := call(t, `[]`, c.tool, c.args); !r.IsError || src != "" {
+			t.Errorf("%s: want rejection before any script, got error=%v src=%q", name, r.IsError, src)
+		}
+	}
+	// the valid names still pass, and limit null still means "all"
+	_, r, src := call(t, `[]`, "list_tasks", map[string]any{"limit": nil})
+	if r.IsError || src == "" {
+		t.Errorf("limit null must stay valid: %+v", r)
+	}
+	for _, ok := range []string{"Regularly", "FromCompletion"} {
+		if _, r, _ := call(t, `[{"ok":true}]`, "add_tasks", map[string]any{"tasks": []any{map[string]any{"name": "T", "repetition": rep("scheduleType", ok)}}}); r.IsError {
+			t.Errorf("scheduleType %s rejected: %+v", ok, r)
+		}
+	}
+}
+
 // Null means "clear" only on clearable fields; anywhere else the schema rejects
 // the whole call before a script runs.
 func TestNullOnNonClearableFieldRejected(t *testing.T) {

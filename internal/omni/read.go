@@ -139,6 +139,18 @@ type Project struct {
 // Sequential (actions run in order) or SingleActions (a list of unrelated actions).
 var projectTypes = []string{"Parallel", "Sequential", "SingleActions"}
 
+// InputEnums gives the names a write input accepts, by JSON property name, from
+// the sets the validators check against: repetition scheduleType and anchor,
+// reviewInterval unit and project type. The tool schemas enumerate them from here.
+func InputEnums() map[string][]string {
+	return map[string][]string{
+		"scheduleType": slices.Clone(repetitionScheduleTypes),
+		"anchor":       slices.Clone(repetitionAnchors),
+		"unit":         slices.Clone(reviewUnits),
+		"type":         slices.Clone(projectTypes),
+	}
+}
+
 func checkProjectType(t string) error {
 	if !slices.Contains(projectTypes, t) {
 		return fmt.Errorf("type: %q must be one of %v", t, projectTypes)

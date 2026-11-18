@@ -46,6 +46,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 		Name:        "drop",
 		Description: "Drop tasks, projects, tags or folders. Reversible through this server: projects, tags and folders by edit status Active, tasks by edit_tasks restore true. Dropping a project drops its tasks; dropping a folder drops its projects. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
 		Annotations: destructive,
+		InputSchema: writeSchema[refsIn](false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in refsIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.DropObjects(ctx, in.Items)
 		return nil, structOut{Results: rs}, err
@@ -54,6 +55,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 		Name:        "delete",
 		Description: "Permanently delete tasks, projects, tags or folders. IRREVERSIBLE. Guards: a tag or folder is deleted only when already dropped and empty (delete children first); a task or project is deleted only without remaining (incomplete) tasks or subtasks; drop it instead. Returns one result per item; a refusal comes back as that item's error with the reason.",
 		Annotations: destructive,
+		InputSchema: writeSchema[refsIn](false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in refsIn) (*mcp.CallToolResult, structOut, error) {
 		rs, err := b.DeleteObjects(ctx, in.Items)
 		return nil, structOut{Results: rs}, err

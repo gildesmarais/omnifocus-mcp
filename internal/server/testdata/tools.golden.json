@@ -39,6 +39,7 @@
                 },
                 "estimatedMinutes": {
                   "description": "project only: 0 or more",
+                  "minimum": 0,
                   "type": "integer"
                 },
                 "flagged": {
@@ -70,6 +71,11 @@
                   "properties": {
                     "anchor": {
                       "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "enum": [
+                        "DeferDate",
+                        "DueDate",
+                        "PlannedDate"
+                      ],
                       "type": "string"
                     },
                     "catchUp": {
@@ -82,6 +88,10 @@
                     },
                     "scheduleType": {
                       "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "enum": [
+                        "Regularly",
+                        "FromCompletion"
+                      ],
                       "type": "string"
                     }
                   },
@@ -106,6 +116,11 @@
                 },
                 "type": {
                   "description": "project only: Parallel (default), Sequential or SingleActions",
+                  "enum": [
+                    "Parallel",
+                    "Sequential",
+                    "SingleActions"
+                  ],
                   "type": "string"
                 }
               },
@@ -214,6 +229,7 @@
                 },
                 "estimatedMinutes": {
                   "description": "0 or more",
+                  "minimum": 0,
                   "type": "integer"
                 },
                 "flagged": {
@@ -241,6 +257,11 @@
                   "properties": {
                     "anchor": {
                       "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "enum": [
+                        "DeferDate",
+                        "DueDate",
+                        "PlannedDate"
+                      ],
                       "type": "string"
                     },
                     "catchUp": {
@@ -253,6 +274,10 @@
                     },
                     "scheduleType": {
                       "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "enum": [
+                        "Regularly",
+                        "FromCompletion"
+                      ],
                       "type": "string"
                     }
                   },
@@ -537,10 +562,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -641,10 +663,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -820,6 +839,11 @@
                       "properties": {
                         "anchor": {
                           "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "enum": [
+                            "DeferDate",
+                            "DueDate",
+                            "PlannedDate"
+                          ],
                           "type": "string"
                         },
                         "catchUp": {
@@ -832,6 +856,10 @@
                         },
                         "scheduleType": {
                           "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "enum": [
+                            "Regularly",
+                            "FromCompletion"
+                          ],
                           "type": "string"
                         }
                       },
@@ -855,10 +883,17 @@
                   "properties": {
                     "steps": {
                       "description": "1 or more",
+                      "minimum": 1,
                       "type": "integer"
                     },
                     "unit": {
                       "description": "days, weeks, months or years",
+                      "enum": [
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
                       "type": "string"
                     }
                   },
@@ -897,6 +932,11 @@
                 },
                 "type": {
                   "description": "Parallel, Sequential or SingleActions",
+                  "enum": [
+                    "Parallel",
+                    "Sequential",
+                    "SingleActions"
+                  ],
                   "type": "string"
                 }
               },
@@ -1063,6 +1103,11 @@
                       "properties": {
                         "anchor": {
                           "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "enum": [
+                            "DeferDate",
+                            "DueDate",
+                            "PlannedDate"
+                          ],
                           "type": "string"
                         },
                         "catchUp": {
@@ -1075,6 +1120,10 @@
                         },
                         "scheduleType": {
                           "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "enum": [
+                            "Regularly",
+                            "FromCompletion"
+                          ],
                           "type": "string"
                         }
                       },
@@ -2286,17 +2335,11 @@
           },
           "available": {
             "description": "true: not blocked, deferred, completed or dropped",
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "completed": {
             "description": "only completed tasks (true) or only not-completed tasks (false)",
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "completed_after": {
             "description": "completed on or after; a date-only value starts at 00:00. Matches completed tasks only. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
@@ -2316,10 +2359,7 @@
           },
           "dropped": {
             "description": "only dropped tasks (true) or only not-dropped tasks (false)",
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "due_after": {
             "description": "due on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
@@ -2330,17 +2370,11 @@
             "type": "string"
           },
           "flagged": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "inbox": {
             "description": "only inbox tasks (true) or only non-inbox tasks (false)",
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "limit": {
             "default": 50,
@@ -2368,10 +2402,7 @@
           },
           "repeating": {
             "description": "only tasks with a repetition rule (true) or only non-repeating tasks (false)",
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "search": {
             "description": "case-insensitive substring over name and note",
@@ -2383,10 +2414,7 @@
           },
           "untagged": {
             "description": "only tasks without tags (true) or only tagged tasks (false)",
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         },
         "type": "object"

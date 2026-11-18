@@ -70,6 +70,7 @@ Conventions:
 - Ids are OmniFocus `primaryKey` strings.
 - Dates are ISO 8601 strings: `2026-11-18`, `2026-11-18T08:00:00`, or with an offset (`2026-11-18T08:00:00Z`, `...+01:00`). No offset means local time. A date-only value means 00:00 local time when written; as a filter bound it covers its whole day (see `list_tasks`). Returned dates are local time without an offset.
 - In patches, an omitted field means unchanged and an explicit `null` clears (dates, note, `estimatedMinutes`, `repetition`).
+- `null` on a field that cannot be cleared is rejected by the schema and fails the whole call before any script runs; only clearable fields accept `null` per item. The same holds for a value outside a field's schema: a repetition `scheduleType` or `anchor`, review `unit` or project `type` not in the listed names, a negative `estimatedMinutes` or `steps` below 1. `limit: null` (all) is the one `null` the list tools accept.
 - Batch tools apply items in order and return one result per item (`ok` or `error`). One failing item never aborts the batch.
 - Invalid input is rejected before any script runs.
 

@@ -25,23 +25,72 @@ type taskWriteOut struct {
 // clearMark tags the schemas of clearable fields so the null strip skips them.
 const clearMark = "x-clear"
 
+// minimums are the lower bounds the omni validators enforce, by property name.
+// No tool input reuses these names for another field.
+var minimums = map[string]float64{"estimatedMinutes": 0, "steps": 1}
+
+// tighten adds what omni validates per item to the schema: the allowed names
+// from omni.InputEnums and the minimums above, on every property that carries
+// one. A violation then fails the whole call at the schema, before any script runs.
+func tighten(s *jsonschema.Schema) {
+	if s == nil {
+		return
+	}
+	enums := omni.InputEnums()
+	for name, p := range s.Properties {
+		if vals, ok := enums[name]; ok {
+			p.Enum = nil
+			for _, v := range vals {
+				p.Enum = append(p.Enum, v)
+			}
+		}
+		if m, ok := minimums[name]; ok {
+			p.Minimum = &m
+		}
+		tighten(p)
+	}
+	tighten(s.Items)
+	for _, a := range s.AnyOf {
+		tighten(a)
+	}
+}
+
+// stripNull removes null from every type, except under schemas marked clearMark
+// (which lose only the mark). The SDK makes pointers and slices nullable; null
+// is wanted only where it means "clear".
+func stripNull(s *jsonschema.Schema) {
+	if s == nil {
+		return
+	}
+	if _, ok := s.Extra[clearMark]; ok {
+		s.Extra = nil
+		return
+	}
+	s.Types = slices.DeleteFunc(s.Types, func(t string) bool { return t == "null" })
+	if len(s.Types) == 1 {
+		s.Type, s.Types = s.Types[0], nil
+	}
+	for _, p := range s.Properties {
+		stripNull(p)
+	}
+	stripNull(s.Items)
+}
+
 // writeSchema builds In's input schema. Null is accepted only where it means
-// "clear": the omni.Nullable fields, as value-or-null. The SDK's nullable
-// pointers and slices are made plain, so a null anywhere else fails validation.
-// withClear false (add tools: nothing to clear) makes the Nullable fields plain too.
+// "clear": the omni.Nullable fields, as value-or-null. Every other null fails
+// validation. withClear false (add tools: nothing to clear) makes the Nullable fields plain too.
 func writeSchema[In any](withClear bool) *jsonschema.Schema {
 	rep, err := jsonschema.For[omni.Repetition](nil)
 	if err != nil {
 		panic(err)
 	}
-	zero := 0.0
 	str := &jsonschema.Schema{Type: "string"}
-	num := &jsonschema.Schema{Type: "integer", Minimum: &zero}
+	num := &jsonschema.Schema{Type: "integer"}
 	rule := rep
 	if withClear {
 		mark := map[string]any{clearMark: true}
 		str = &jsonschema.Schema{Types: []string{"string", "null"}, Extra: mark}
-		num = &jsonschema.Schema{Types: []string{"integer", "null"}, Minimum: &zero, Extra: mark}
+		num = &jsonschema.Schema{Types: []string{"integer", "null"}, Extra: mark}
 		rule = &jsonschema.Schema{AnyOf: []*jsonschema.Schema{rep, {Type: "null"}}, Extra: mark}
 	}
 	sc, err := jsonschema.For[In](&jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{
@@ -52,25 +101,8 @@ func writeSchema[In any](withClear bool) *jsonschema.Schema {
 	if err != nil {
 		panic(err)
 	}
-	var strip func(*jsonschema.Schema)
-	strip = func(s *jsonschema.Schema) {
-		if s == nil {
-			return
-		}
-		if _, ok := s.Extra[clearMark]; ok {
-			s.Extra = nil
-			return
-		}
-		s.Types = slices.DeleteFunc(s.Types, func(t string) bool { return t == "null" })
-		if len(s.Types) == 1 {
-			s.Type, s.Types = s.Types[0], nil
-		}
-		for _, p := range s.Properties {
-			strip(p)
-		}
-		strip(s.Items)
-	}
-	strip(sc)
+	tighten(sc)
+	stripNull(sc)
 	return sc
 }
 
