@@ -115,7 +115,7 @@ func writeSchema[In any](withClear bool) *jsonschema.Schema {
 func addWriteTools(s *mcp.Server, b *omni.Bridge) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "add_tasks",
-		Description: "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Optional estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, sequential and completedByChildren. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
+		Description: "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Optional estimatedMinutes, repetition {rule (RRULE), scheduleType, anchor, catchUp}, sequential and completedByChildren. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
 		Annotations: notDestructive,
 		InputSchema: writeSchema[addTasksIn](false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in addTasksIn) (*mcp.CallToolResult, taskWriteOut, error) {

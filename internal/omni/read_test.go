@@ -340,8 +340,13 @@ func TestListProjectsStatusValidation(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].Folder.ID != "f1" {
 		t.Fatalf("got %+v err %v", got, err)
 	}
-	if _, err := b.ListProjects(context.Background(), ProjectFilter{Status: "Bogus"}); err == nil {
-		t.Fatal("want status error")
+	// the error lists the filter's own set: every writable project status, then Dropped
+	_, err = b.ListProjects(context.Background(), ProjectFilter{Status: "Bogus"})
+	if err == nil || err.Error() != `status: "Bogus" must be one of [Active OnHold Done Dropped]` {
+		t.Fatalf("status error: %v", err)
+	}
+	if _, err := b.ListProjects(context.Background(), ProjectFilter{Status: statusDropped}); err != nil {
+		t.Errorf("Dropped is a valid filter: %v", err)
 	}
 }
 

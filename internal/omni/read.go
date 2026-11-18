@@ -53,8 +53,8 @@ type Task struct {
 // owns the shape and its validation for every object that repeats.
 type Repetition struct {
 	Rule         string       `json:"rule" jsonschema:"RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR"`
-	ScheduleType ScheduleType `json:"scheduleType" jsonschema:"Regularly (fixed schedule) or FromCompletion (counts from completion)"`
-	Anchor       Anchor       `json:"anchor" jsonschema:"the date the rule moves: DeferDate, DueDate or PlannedDate"`
+	ScheduleType ScheduleType `json:"scheduleType" jsonschema:"how the next occurrence is scheduled"`
+	Anchor       Anchor       `json:"anchor" jsonschema:"the date the rule moves"`
 	CatchUp      bool         `json:"catchUp" jsonschema:"skip occurrences already past"`
 }
 
@@ -69,8 +69,8 @@ func (r Repetition) check() error {
 
 // ReviewInterval is how often a project is reviewed.
 type ReviewInterval struct {
-	Steps Steps      `json:"steps" jsonschema:"1 or more"`
-	Unit  ReviewUnit `json:"unit" jsonschema:"days, weeks, months or years"`
+	Steps Steps      `json:"steps"`
+	Unit  ReviewUnit `json:"unit"`
 }
 
 func (r ReviewInterval) check() error {
@@ -84,7 +84,7 @@ type Project struct {
 	Note        string      `json:"note,omitempty"`
 	Status      string      `json:"status"`
 	Flagged     bool        `json:"flagged"`
-	Type        ProjectType `json:"type" jsonschema:"Parallel, Sequential or SingleActions"`
+	Type        ProjectType `json:"type"`
 	Available   bool        `json:"available"`
 	Blocked     bool        `json:"blocked"`
 	Folder      *Ref        `json:"folder,omitempty"`
@@ -160,8 +160,9 @@ type ProjectFilter struct {
 	ReviewDueBefore string `json:"review_due_before,omitempty" jsonschema:"next review on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 }
 
-// filterStatuses are the project statuses list_projects filters by.
-var filterStatuses = []Status{statusActive, statusOnHold, statusDone, statusDropped}
+// filterStatuses are the project statuses list_projects filters by: every one a
+// project can be written with, plus Dropped.
+var filterStatuses = append(slices.Clone(addStatuses[kindProject]), statusDropped)
 
 // resolveBound validates one range bound and rewrites *s in place to its full
 // timestamp (see date.bound). A nil or empty bound is absent (zero date); a
@@ -257,7 +258,7 @@ func (b *Bridge) GetTask(ctx context.Context, id string) (Task, error) {
 // ListProjects returns projects matching f.
 func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, error) {
 	if f.Status != "" && !slices.Contains(filterStatuses, f.Status) {
-		return nil, fmt.Errorf("status: %q must be Active, OnHold, Done or Dropped", f.Status)
+		return nil, fmt.Errorf("status: %q must be one of %v", f.Status, filterStatuses)
 	}
 	_, errDue := resolveBound("review_due_before", &f.ReviewDueBefore, true)
 	if err := errors.Join(errDue, checkLimit(f.Limit)); err != nil {

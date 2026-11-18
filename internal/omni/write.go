@@ -62,7 +62,7 @@ type TaskAdd struct {
 	Parent  string   `json:"parent,omitempty" jsonschema:"parent task id"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names"`
 
-	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty" jsonschema:"0 or more"`
+	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty"`
 	Repetition          *Repetition `json:"repetition,omitempty"`
 	Sequential          bool        `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
 	CompletedByChildren bool        `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
@@ -79,7 +79,7 @@ type FactEdits struct {
 	Due     NullableString `json:"due,omitzero"`
 	Planned NullableString `json:"planned,omitzero"`
 
-	EstimatedMinutes Nullable[Minutes]    `json:"estimatedMinutes,omitzero" jsonschema:"0 or more; null clears"`
+	EstimatedMinutes Nullable[Minutes]    `json:"estimatedMinutes,omitzero" jsonschema:"null clears"`
 	Repetition       Nullable[Repetition] `json:"repetition,omitzero" jsonschema:"null clears"`
 }
 

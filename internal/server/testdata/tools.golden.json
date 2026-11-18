@@ -16,7 +16,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold). Project only, named as in add_tasks: type Parallel|Sequential|SingleActions, defer/due/planned, flagged, note, tags by id or name, estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, completedByChildren. Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
+      "description": "Create projects, tags or folders in one batch. parent is a folder id (project, folder) or tag id (tag); omit for the root. Optional status (project Active/OnHold/Done, tag Active/OnHold). Project only, named as in add_tasks: type, defer/due/planned, flagged, note, tags by id or name, estimatedMinutes, repetition {rule (RRULE), scheduleType, anchor, catchUp}, completedByChildren. Returns one result per item (id, ok/error, name, status, parent); a bad item does not stop the others.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -38,7 +38,7 @@
                   "type": "string"
                 },
                 "estimatedMinutes": {
-                  "description": "project only: 0 or more",
+                  "description": "project only",
                   "minimum": 0,
                   "type": "integer"
                 },
@@ -70,7 +70,7 @@
                   "description": "project only",
                   "properties": {
                     "anchor": {
-                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "description": "the date the rule moves",
                       "enum": [
                         "DeferDate",
                         "DueDate",
@@ -87,7 +87,7 @@
                       "type": "string"
                     },
                     "scheduleType": {
-                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "description": "how the next occurrence is scheduled",
                       "enum": [
                         "Regularly",
                         "FromCompletion"
@@ -115,7 +115,7 @@
                   "type": "array"
                 },
                 "type": {
-                  "description": "project only: Parallel (default), Sequential or SingleActions",
+                  "description": "project only: how its tasks are ordered",
                   "enum": [
                     "Parallel",
                     "Sequential",
@@ -208,7 +208,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Optional estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, sequential and completedByChildren. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
+      "description": "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Optional estimatedMinutes, repetition {rule (RRULE), scheduleType, anchor, catchUp}, sequential and completedByChildren. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -228,7 +228,6 @@
                   "type": "string"
                 },
                 "estimatedMinutes": {
-                  "description": "0 or more",
                   "minimum": 0,
                   "type": "integer"
                 },
@@ -256,7 +255,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "anchor": {
-                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "description": "the date the rule moves",
                       "enum": [
                         "DeferDate",
                         "DueDate",
@@ -273,7 +272,7 @@
                       "type": "string"
                     },
                     "scheduleType": {
-                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "description": "how the next occurrence is scheduled",
                       "enum": [
                         "Regularly",
                         "FromCompletion"
@@ -436,7 +435,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "anchor": {
-                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "description": "the date the rule moves",
                           "type": "string"
                         },
                         "catchUp": {
@@ -448,7 +447,7 @@
                           "type": "string"
                         },
                         "scheduleType": {
-                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "description": "how the next occurrence is scheduled",
                           "type": "string"
                         }
                       },
@@ -741,7 +740,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; folder status Active restores a dropped folder; project only, named as in edit_tasks: type Parallel|Sequential|SingleActions, note, flagged, defer/due/planned, estimatedMinutes and repetition (null clears these), tags {add, remove} by id or name, completedByChildren; review (project only): reviewInterval {steps\u003e=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder, restore. Dropping and deleting are separate tools. Returns one result per item.",
+      "description": "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; folder status Active restores a dropped folder; project only, named as in edit_tasks: type, note, flagged, defer/due/planned, estimatedMinutes and repetition (null clears these), tags {add, remove} by id or name, completedByChildren; review (project only): reviewInterval {steps, unit}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder, restore. Dropping and deleting are separate tools. Returns one result per item.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -767,7 +766,7 @@
                   ]
                 },
                 "estimatedMinutes": {
-                  "description": "0 or more; null clears",
+                  "description": "null clears",
                   "minimum": 0,
                   "type": [
                     "integer",
@@ -838,7 +837,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "anchor": {
-                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "description": "the date the rule moves",
                           "enum": [
                             "DeferDate",
                             "DueDate",
@@ -855,7 +854,7 @@
                           "type": "string"
                         },
                         "scheduleType": {
-                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "description": "how the next occurrence is scheduled",
                           "enum": [
                             "Regularly",
                             "FromCompletion"
@@ -882,12 +881,10 @@
                   "description": "cannot be cleared; does not move nextReviewDate",
                   "properties": {
                     "steps": {
-                      "description": "1 or more",
                       "minimum": 1,
                       "type": "integer"
                     },
                     "unit": {
-                      "description": "days, weeks, months or years",
                       "enum": [
                         "days",
                         "weeks",
@@ -931,7 +928,7 @@
                   "type": "object"
                 },
                 "type": {
-                  "description": "Parallel, Sequential or SingleActions",
+                  "description": "how its tasks are ordered",
                   "enum": [
                     "Parallel",
                     "Sequential",
@@ -1053,7 +1050,7 @@
                   ]
                 },
                 "estimatedMinutes": {
-                  "description": "0 or more; null clears",
+                  "description": "null clears",
                   "minimum": 0,
                   "type": [
                     "integer",
@@ -1102,7 +1099,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "anchor": {
-                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "description": "the date the rule moves",
                           "enum": [
                             "DeferDate",
                             "DueDate",
@@ -1119,7 +1116,7 @@
                           "type": "string"
                         },
                         "scheduleType": {
-                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "description": "how the next occurrence is scheduled",
                           "enum": [
                             "Regularly",
                             "FromCompletion"
@@ -1306,7 +1303,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "anchor": {
-                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "description": "the date the rule moves",
                           "type": "string"
                         },
                         "catchUp": {
@@ -1318,7 +1315,7 @@
                           "type": "string"
                         },
                         "scheduleType": {
-                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "description": "how the next occurrence is scheduled",
                           "type": "string"
                         }
                       },
@@ -1555,7 +1552,7 @@
             "additionalProperties": false,
             "properties": {
               "anchor": {
-                "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                "description": "the date the rule moves",
                 "type": "string"
               },
               "catchUp": {
@@ -1567,7 +1564,7 @@
                 "type": "string"
               },
               "scheduleType": {
-                "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                "description": "how the next occurrence is scheduled",
                 "type": "string"
               }
             },
@@ -1586,11 +1583,9 @@
             "additionalProperties": false,
             "properties": {
               "steps": {
-                "description": "1 or more",
                 "type": "integer"
               },
               "unit": {
-                "description": "days, weeks, months or years",
                 "type": "string"
               }
             },
@@ -1629,7 +1624,6 @@
             ]
           },
           "type": {
-            "description": "Parallel, Sequential or SingleActions",
             "type": "string"
           }
         },
@@ -1838,7 +1832,7 @@
             "additionalProperties": false,
             "properties": {
               "anchor": {
-                "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                "description": "the date the rule moves",
                 "type": "string"
               },
               "catchUp": {
@@ -1850,7 +1844,7 @@
                 "type": "string"
               },
               "scheduleType": {
-                "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                "description": "how the next occurrence is scheduled",
                 "type": "string"
               }
             },
@@ -2145,7 +2139,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "anchor": {
-                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "description": "the date the rule moves",
                       "type": "string"
                     },
                     "catchUp": {
@@ -2157,7 +2151,7 @@
                       "type": "string"
                     },
                     "scheduleType": {
-                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "description": "how the next occurrence is scheduled",
                       "type": "string"
                     }
                   },
@@ -2176,11 +2170,9 @@
                   "additionalProperties": false,
                   "properties": {
                     "steps": {
-                      "description": "1 or more",
                       "type": "integer"
                     },
                     "unit": {
-                      "description": "days, weeks, months or years",
                       "type": "string"
                     }
                   },
@@ -2219,7 +2211,6 @@
                   ]
                 },
                 "type": {
-                  "description": "Parallel, Sequential or SingleActions",
                   "type": "string"
                 }
               },
@@ -2529,7 +2520,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "anchor": {
-                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "description": "the date the rule moves",
                       "type": "string"
                     },
                     "catchUp": {
@@ -2541,7 +2532,7 @@
                       "type": "string"
                     },
                     "scheduleType": {
-                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "description": "how the next occurrence is scheduled",
                       "type": "string"
                     }
                   },

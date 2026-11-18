@@ -49,7 +49,7 @@ type StructAdd struct {
 // add_tasks. Every field is a pointer or slice so that nil means "not sent":
 // a tag or folder is rejected for any project field the client sent, whatever its value.
 type ProjectAdd struct {
-	Type    *ProjectType `json:"type,omitempty" jsonschema:"project only: Parallel (default), Sequential or SingleActions"`
+	Type    *ProjectType `json:"type,omitempty" jsonschema:"project only: how its tasks are ordered"`
 	Note    *string      `json:"note,omitempty" jsonschema:"project only"`
 	Flagged *bool        `json:"flagged,omitempty" jsonschema:"project only"`
 	Defer   *string      `json:"defer,omitempty" jsonschema:"project only"`
@@ -57,7 +57,7 @@ type ProjectAdd struct {
 	Planned *string      `json:"planned,omitempty" jsonschema:"project only"`
 	Tags    []string     `json:"tags,omitempty" jsonschema:"project only: tag ids or unambiguous names"`
 
-	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty" jsonschema:"project only: 0 or more"`
+	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty" jsonschema:"project only"`
 	Repetition          *Repetition `json:"repetition,omitempty" jsonschema:"project only"`
 	CompletedByChildren *bool       `json:"completedByChildren,omitempty" jsonschema:"project only: completes when its last task does"`
 }
@@ -89,7 +89,7 @@ type StructEdit struct {
 // edit_tasks: omitted is unchanged, null clears Note, Defer, Due, Planned,
 // EstimatedMinutes and Repetition. As in ProjectAdd, nil or unset means "not sent".
 type ProjectEdit struct {
-	Type *ProjectType `json:"type,omitempty" jsonschema:"Parallel, Sequential or SingleActions"`
+	Type *ProjectType `json:"type,omitempty" jsonschema:"how its tasks are ordered"`
 
 	FactEdits
 	Tags                *TagEdit `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names to add and remove"`
