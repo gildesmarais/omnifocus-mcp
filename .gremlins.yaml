@@ -11,3 +11,6 @@ mutants:
     enabled: true
   remove-self-assignments:
     enabled: true
+unleash:
+  exclude-files:
+    - '(^|/)\.claude/'
