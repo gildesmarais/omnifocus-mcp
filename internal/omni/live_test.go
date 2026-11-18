@@ -182,6 +182,10 @@ func TestLiveTaskFilters(t *testing.T) {
 	check("dropped", TaskFilter{Dropped: &yes}, func(x Task) bool { return x.Dropped })
 	check("not dropped", TaskFilter{Dropped: &no}, func(x Task) bool { return !x.Dropped })
 	check("completed", TaskFilter{Completed: &yes}, func(x Task) bool { return x.Completed })
+	check("inbox", TaskFilter{Inbox: &yes}, func(x Task) bool { return x.Inbox })
+	check("not inbox", TaskFilter{Inbox: &no}, func(x Task) bool { return !x.Inbox })
+	check("available", TaskFilter{Available: &yes}, func(x Task) bool { return x.Available })
+	check("not available", TaskFilter{Available: &no}, func(x Task) bool { return !x.Available })
 	for _, x := range all {
 		if x.Completed && x.Dropped {
 			t.Fatalf("task %s is completed and dropped; the contradiction check assumes they are disjoint", x.ID)

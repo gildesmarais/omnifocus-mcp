@@ -228,6 +228,13 @@ func TestLiveTaskFieldWrites(t *testing.T) {
 		t.Fatalf("failed item changed the task: %+v %v", x, err)
 	}
 
+	// Every plain field on add.
+	full := create(TaskAdd{Name: name + "-full", Project: sandbox, Note: "n", Flagged: true, Defer: "2026-12-01T08:00:00", Due: "2026-12-04", Planned: "2026-12-02T09:00:00",
+		Sequential: true, CompletedByChildren: true})
+	if x, err = b.GetTask(ctx, full.ID); err != nil || x.Note != "n" || !x.Flagged || x.Defer != "2026-12-01T08:00:00" || x.Due != "2026-12-04T00:00:00" || x.Planned != "2026-12-02T09:00:00" || !x.Sequential || !x.CompletedByChildren {
+		t.Fatalf("add every field: %+v %v", x, err)
+	}
+
 	// Group flags on a parent with a child.
 	parent := create(TaskAdd{Name: name + "-parent", Project: sandbox})
 	create(TaskAdd{Name: name + "-child", Parent: parent.ID})
