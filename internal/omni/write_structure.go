@@ -45,21 +45,13 @@ type StructAdd struct {
 	ProjectAdd
 }
 
-// ProjectAdd holds the add fields only a project has. Names and meaning match
-// add_tasks. Every field is a pointer or slice so that nil means "not sent":
-// a tag or folder is rejected for any project field the client sent, whatever its value.
+// ProjectAdd holds the add fields only a project takes: its type and the
+// FactAdds it shares with a task, named and meant as in add_tasks. Every field
+// is a pointer or slice (see FactAdds), which errProjectOnly relies on.
 type ProjectAdd struct {
-	Type    *ProjectType `json:"type,omitempty" jsonschema:"project only: how its tasks are ordered"`
-	Note    *string      `json:"note,omitempty" jsonschema:"project only"`
-	Flagged *bool        `json:"flagged,omitempty" jsonschema:"project only"`
-	Defer   *string      `json:"defer,omitempty" jsonschema:"project only"`
-	Due     *string      `json:"due,omitempty" jsonschema:"project only"`
-	Planned *string      `json:"planned,omitempty" jsonschema:"project only"`
-	Tags    []string     `json:"tags,omitempty" jsonschema:"project only: tag ids or unambiguous names"`
+	Type *ProjectType `json:"type,omitempty" jsonschema:"project only: how its tasks are ordered"`
 
-	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty" jsonschema:"project only"`
-	Repetition          *Repetition `json:"repetition,omitempty" jsonschema:"project only"`
-	CompletedByChildren *bool       `json:"completedByChildren,omitempty" jsonschema:"project only: completes when its last task does"`
+	FactAdds
 }
 
 // StructMove re-parents an object; parent null moves it to the root.
@@ -183,7 +175,7 @@ func (p StructEdit) changesNothing() bool {
 
 // check validates the add fields that need no lookup.
 func (a ProjectAdd) check() error {
-	errs := []error{facts{text(a.Defer), text(a.Due), text(a.Planned), a.EstimatedMinutes, a.Repetition}.check()}
+	errs := []error{a.FactAdds.check()}
 	if a.Type != nil {
 		errs = append(errs, checkEnum("type", *a.Type))
 	}

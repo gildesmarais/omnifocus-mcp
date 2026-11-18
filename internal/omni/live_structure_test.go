@@ -229,7 +229,7 @@ func TestLiveKindAndDeleteGuards(t *testing.T) {
 	p := addProject("mcp-test-guard-" + suffix)
 	parent := addTask(TaskAdd{Name: "mcp-test-parent", Project: p})
 	addTask(TaskAdd{Name: "mcp-test-child", Parent: parent})
-	other := addTask(TaskAdd{Name: "mcp-test-other", Project: p, Due: "2026-12-01T08:00:00+01:00"})
+	other := addTask(TaskAdd{Name: "mcp-test-other", Project: p, Due: new("2026-12-01T08:00:00+01:00")})
 
 	// ISO offsets are honored: the stored instant equals the offset time, reported local.
 	want, _ := time.Parse(time.RFC3339, "2026-12-01T08:00:00+01:00")

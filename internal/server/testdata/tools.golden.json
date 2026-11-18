@@ -26,24 +26,20 @@
               "additionalProperties": false,
               "properties": {
                 "completedByChildren": {
-                  "description": "project only: completes when its last task does",
+                  "description": "completes when its last child does",
                   "type": "boolean"
                 },
                 "defer": {
-                  "description": "project only",
                   "type": "string"
                 },
                 "due": {
-                  "description": "project only",
                   "type": "string"
                 },
                 "estimatedMinutes": {
-                  "description": "project only",
                   "minimum": 0,
                   "type": "integer"
                 },
                 "flagged": {
-                  "description": "project only",
                   "type": "boolean"
                 },
                 "kind": {
@@ -54,7 +50,6 @@
                   "type": "string"
                 },
                 "note": {
-                  "description": "project only",
                   "type": "string"
                 },
                 "parent": {
@@ -62,12 +57,10 @@
                   "type": "string"
                 },
                 "planned": {
-                  "description": "project only",
                   "type": "string"
                 },
                 "repetition": {
                   "additionalProperties": false,
-                  "description": "project only",
                   "properties": {
                     "anchor": {
                       "description": "the date the rule moves",
@@ -108,7 +101,7 @@
                   "type": "string"
                 },
                 "tags": {
-                  "description": "project only: tag ids or unambiguous names",
+                  "description": "tag ids or unambiguous names",
                   "items": {
                     "type": "string"
                   },
@@ -218,7 +211,7 @@
               "additionalProperties": false,
               "properties": {
                 "completedByChildren": {
-                  "description": "completes when its last subtask does",
+                  "description": "completes when its last child does",
                   "type": "boolean"
                 },
                 "defer": {

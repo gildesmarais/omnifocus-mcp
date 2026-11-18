@@ -77,7 +77,7 @@ func TestLiveTaskWrites(t *testing.T) {
 
 	adds := timed("add_tasks x2", func() []TaskResult {
 		rs, err := b.AddTasks(ctx, []TaskAdd{
-			{Name: name1 + "-a", Project: sandbox, Note: "n1", Due: "2026-12-01"},
+			{Name: name1 + "-a", Project: sandbox, Note: new("n1"), Due: new("2026-12-01")},
 			{Name: name1 + "-b", Project: sandbox},
 		})
 		if err != nil {
@@ -197,7 +197,7 @@ func TestLiveTaskFieldWrites(t *testing.T) {
 
 	// Repeating task with a due date and an estimate.
 	rep := Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}
-	added := create(TaskAdd{Name: name + "-rep", Project: sandbox, Due: "2026-12-04", EstimatedMinutes: new(Minutes(45)), Repetition: &rep})
+	added := create(TaskAdd{Name: name + "-rep", Project: sandbox, Due: new("2026-12-04"), EstimatedMinutes: new(Minutes(45)), Repetition: &rep})
 	x, err := b.GetTask(ctx, added.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -229,8 +229,8 @@ func TestLiveTaskFieldWrites(t *testing.T) {
 	}
 
 	// Every plain field on add.
-	full := create(TaskAdd{Name: name + "-full", Project: sandbox, Note: "n", Flagged: true, Defer: "2026-12-01T08:00:00", Due: "2026-12-04", Planned: "2026-12-02T09:00:00",
-		Sequential: true, CompletedByChildren: true})
+	full := create(TaskAdd{Name: name + "-full", Project: sandbox, Note: new("n"), Flagged: new(true), Defer: new("2026-12-01T08:00:00"), Due: new("2026-12-04"), Planned: new("2026-12-02T09:00:00"),
+		Sequential: true, CompletedByChildren: new(true)})
 	if x, err = b.GetTask(ctx, full.ID); err != nil || x.Note != "n" || !x.Flagged || x.Defer != "2026-12-01T08:00:00" || x.Due != "2026-12-04T00:00:00" || x.Planned != "2026-12-02T09:00:00" || !x.Sequential || !x.CompletedByChildren {
 		t.Fatalf("add every field: %+v %v", x, err)
 	}

@@ -29,22 +29,22 @@ func wire(t *testing.T, v any) string {
 	return string(raw)
 }
 
-func TestAddItemWire(t *testing.T) {
-	full, err := newAddItem(TaskAdd{Name: "n", Note: "x", Flagged: true, Defer: "2026-11-19", Due: "2026-11-20", Planned: "2026-11-21", Project: "p", Tags: []string{"home", "t2"}}, testTags)
+func TestValidTaskAddWire(t *testing.T) {
+	full, err := validTaskAdd(TaskAdd{Name: "n", Note: new("x"), Flagged: new(true), Defer: new("2026-11-19"), Due: new("2026-11-20"), Planned: new("2026-11-21"), Project: "p", Tags: []string{"home", "t2"}}, testTags)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := wire(t, full), `{"name":"n","note":"x","flagged":true,"defer":"2026-11-19","due":"2026-11-20","planned":"2026-11-21","project":"p","tags":["t1","t2"]}`; got != want {
+	if got, want := wire(t, full), `{"name":"n","project":"p","note":"x","flagged":true,"defer":"2026-11-19","due":"2026-11-20","planned":"2026-11-21","tags":["t1","t2"]}`; got != want {
 		t.Errorf("full add:\n got %s\nwant %s", got, want)
 	}
-	min, err := newAddItem(TaskAdd{Name: "n"}, nil)
+	min, err := validTaskAdd(TaskAdd{Name: "n"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := wire(t, min), `{"name":"n"}`; got != want {
 		t.Errorf("minimal add: got %s want %s", got, want)
 	}
-	sub, err := newAddItem(TaskAdd{Name: "n", Parent: "q"}, nil)
+	sub, err := validTaskAdd(TaskAdd{Name: "n", Parent: "q"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,19 +55,20 @@ func TestAddItemWire(t *testing.T) {
 
 const repJSON = `{"rule":"FREQ=WEEKLY;INTERVAL=1;BYDAY=FR","scheduleType":"Regularly","anchor":"DueDate","catchUp":true}`
 
-func TestAddItemWireTaskFields(t *testing.T) {
+func TestValidTaskAddWireTaskFields(t *testing.T) {
 	zero := Minutes(0)
 	for name, tc := range map[string]struct {
 		in   TaskAdd
 		want string
 	}{
-		"all": {TaskAdd{Name: "n", EstimatedMinutes: new(Minutes(45)), Repetition: &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}, Sequential: true, CompletedByChildren: true},
-			`{"name":"n","estimatedMinutes":45,"repetition":` + repJSON + `,"sequential":true,"completedByChildren":true}`},
-		"zero estimate is sent": {TaskAdd{Name: "n", EstimatedMinutes: &zero}, `{"name":"n","estimatedMinutes":0}`},
+		"all": {TaskAdd{Name: "n", EstimatedMinutes: new(Minutes(45)), Repetition: &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}, Sequential: true, CompletedByChildren: new(true)},
+			`{"name":"n","estimatedMinutes":45,"repetition":` + repJSON + `,"completedByChildren":true,"sequential":true}`},
+		"explicit false is sent": {TaskAdd{Name: "n", Flagged: new(false), CompletedByChildren: new(false)}, `{"name":"n","flagged":false,"completedByChildren":false}`},
+		"zero estimate is sent":  {TaskAdd{Name: "n", EstimatedMinutes: &zero}, `{"name":"n","estimatedMinutes":0}`},
 		"catchUp false is sent": {TaskAdd{Name: "n", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "FromCompletion", Anchor: "DeferDate"}},
 			`{"name":"n","repetition":{"rule":"FREQ=DAILY","scheduleType":"FromCompletion","anchor":"DeferDate","catchUp":false}}`},
 	} {
-		it, err := newAddItem(tc.in, nil)
+		it, err := validTaskAdd(tc.in, nil)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 			continue
@@ -89,11 +90,11 @@ func TestAddValidationTaskFields(t *testing.T) {
 		"missing anchor":       {Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly"}},
 		"invalid anchor":       {Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: "Nope"}},
 	} {
-		if _, err := newAddItem(a, nil); err == nil {
+		if _, err := validTaskAdd(a, nil); err == nil {
 			t.Errorf("%s: want error", name)
 		}
 	}
-	if _, err := newAddItem(TaskAdd{Name: "x", EstimatedMinutes: new(Minutes(0)), Repetition: &good}, nil); err != nil {
+	if _, err := validTaskAdd(TaskAdd{Name: "x", EstimatedMinutes: new(Minutes(0)), Repetition: &good}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -241,15 +242,15 @@ func TestPatchValidation(t *testing.T) {
 func TestAddValidation(t *testing.T) {
 	for name, a := range map[string]TaskAdd{
 		"empty name": {Name: " "},
-		"bad due":    {Name: "x", Due: "2026-13-40"},
+		"bad due":    {Name: "x", Due: new("2026-13-40")},
 		"both":       {Name: "x", Project: "p", Parent: "q"},
 		"tag":        {Name: "x", Tags: []string{"nope"}},
 	} {
-		if _, err := newAddItem(a, testTags); err == nil {
+		if _, err := validTaskAdd(a, testTags); err == nil {
 			t.Errorf("%s: want error", name)
 		}
 	}
-	if _, err := newAddItem(TaskAdd{Name: "x", Tags: []string{"home"}, Due: "2026-11-20T08:00:00"}, testTags); err != nil {
+	if _, err := validTaskAdd(TaskAdd{Name: "x", Tags: []string{"home"}, Due: new("2026-11-20T08:00:00")}, testTags); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -50,22 +50,32 @@ func (n *Nullable[T]) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(b, &n.Value)
 }
 
-// TaskAdd is one add_tasks item as received from the client.
-type TaskAdd struct {
-	Name    string   `json:"name"`
-	Note    string   `json:"note,omitempty"`
-	Flagged bool     `json:"flagged,omitempty"`
-	Defer   string   `json:"defer,omitempty"`
-	Due     string   `json:"due,omitempty"`
-	Planned string   `json:"planned,omitempty"`
-	Project string   `json:"project,omitempty" jsonschema:"project id; omit both project and parent for the inbox"`
-	Parent  string   `json:"parent,omitempty" jsonschema:"parent task id"`
+// FactAdds are the add fields a task and a project share, the counterpart of
+// FactEdits for creating. Every field is a pointer or slice so that nil means
+// "not sent": a tag or folder is rejected for any project field the client sent,
+// whatever its value. The descriptions are neutral because both hosts take them.
+type FactAdds struct {
+	Note    *string  `json:"note,omitempty"`
+	Flagged *bool    `json:"flagged,omitempty"`
+	Defer   *string  `json:"defer,omitempty"`
+	Due     *string  `json:"due,omitempty"`
+	Planned *string  `json:"planned,omitempty"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names"`
 
 	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty"`
 	Repetition          *Repetition `json:"repetition,omitempty"`
-	Sequential          bool        `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
-	CompletedByChildren bool        `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
+	CompletedByChildren *bool       `json:"completedByChildren,omitempty" jsonschema:"completes when its last child does"`
+}
+
+// TaskAdd is one add_tasks item as received from the client. A validated one
+// (validTaskAdd, tags resolved to ids) is also what add_tasks.js reads.
+type TaskAdd struct {
+	Name    string `json:"name"`
+	Project string `json:"project,omitempty" jsonschema:"project id; omit both project and parent for the inbox"`
+	Parent  string `json:"parent,omitempty" jsonschema:"parent task id"`
+
+	FactAdds
+	Sequential bool `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
 }
 
 // FactEdits are the patch fields a task and a project share, with their one
@@ -91,6 +101,13 @@ type facts struct {
 	Estimate            *Minutes
 	Repetition          *Repetition
 }
+
+// facts projects the add fields into the shared rule set.
+func (f FactAdds) facts() facts {
+	return facts{Defer: text(f.Defer), Due: text(f.Due), Planned: text(f.Planned), Estimate: f.EstimatedMinutes, Repetition: f.Repetition}
+}
+
+func (f FactAdds) check() error { return f.facts().check() }
 
 func (f facts) check() error {
 	var errs []error
@@ -160,25 +177,6 @@ type TaskResult struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 	Task  *Task  `json:"task,omitempty"`
-}
-
-// addItem is a validated add_tasks item in script form: the keys add_tasks.js
-// reads, with tags resolved to ids.
-type addItem struct {
-	Name    string   `json:"name"`
-	Note    string   `json:"note,omitempty"`
-	Flagged bool     `json:"flagged,omitempty"`
-	Defer   string   `json:"defer,omitempty"`
-	Due     string   `json:"due,omitempty"`
-	Planned string   `json:"planned,omitempty"`
-	Project string   `json:"project,omitempty"`
-	Parent  string   `json:"parent,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
-
-	EstimatedMinutes    *Minutes    `json:"estimatedMinutes,omitempty"`
-	Repetition          *Repetition `json:"repetition,omitempty"`
-	Sequential          bool        `json:"sequential,omitempty"`
-	CompletedByChildren bool        `json:"completedByChildren,omitempty"`
 }
 
 // patchItem is a validated edit_tasks patch in script form. Unset clearable
@@ -251,20 +249,20 @@ func resolveTagEdit(te TagEdit, tags []Tag) (TagEdit, error) {
 	return TagEdit{Add: add, Remove: rem}, errors.Join(errs...)
 }
 
-// newAddItem validates a and returns its script form.
-func newAddItem(a TaskAdd, tags []Tag) (addItem, error) {
-	if err := errors.Join(nonEmpty("name", a.Name), facts{a.Defer, a.Due, a.Planned, a.EstimatedMinutes, a.Repetition}.check()); err != nil {
-		return addItem{}, err
+// validTaskAdd validates a and returns its script form: tags resolved to ids.
+func validTaskAdd(a TaskAdd, tags []Tag) (TaskAdd, error) {
+	if err := errors.Join(nonEmpty("name", a.Name), a.facts().check()); err != nil {
+		return TaskAdd{}, err
 	}
 	if a.Project != "" && a.Parent != "" {
-		return addItem{}, errors.New("project and parent are mutually exclusive")
+		return TaskAdd{}, errors.New("project and parent are mutually exclusive")
 	}
 	ids, err := resolveTags(a.Tags, tags)
 	if err != nil {
-		return addItem{}, err
+		return TaskAdd{}, err
 	}
-	return addItem{Name: a.Name, Note: a.Note, Flagged: a.Flagged, Defer: a.Defer, Due: a.Due, Planned: a.Planned, Project: a.Project, Parent: a.Parent, Tags: ids,
-		EstimatedMinutes: a.EstimatedMinutes, Repetition: a.Repetition, Sequential: a.Sequential, CompletedByChildren: a.CompletedByChildren}, nil
+	a.Tags = ids
+	return a, nil
 }
 
 // newPatchItem validates p and returns its script form. Nothing reaches a
@@ -326,7 +324,7 @@ func (b *Bridge) AddTasks(ctx context.Context, adds []TaskAdd) ([]TaskResult, er
 	if err != nil {
 		return nil, err
 	}
-	return runBatch(ctx, b, scriptAddTasks, len(adds), nil, failTask, func(i int) (addItem, error) { return newAddItem(adds[i], tags) })
+	return runBatch(ctx, b, scriptAddTasks, len(adds), nil, failTask, func(i int) (TaskAdd, error) { return validTaskAdd(adds[i], tags) })
 }
 
 // EditTasks applies patches in one script call, with the same result contract as AddTasks.
