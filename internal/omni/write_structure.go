@@ -139,12 +139,13 @@ func checkStatus(allowed map[Kind][]Status, kind Kind, status Status) error {
 	return nil
 }
 
-// errProjectOnly rejects the project-only struct v (ProjectAdd or ProjectEdit)
-// on another kind, naming the JSON fields the client sent. Sent means non-zero:
-// every field is a pointer, slice or Nullable, so only an omitted one is zero.
-// Walking the visible fields (the embedded group's too) keeps new project
-// fields covered without a second list.
-func errProjectOnly(kind Kind, v any) error {
+// errProjectOnly rejects the project-only struct v on another kind, naming the
+// JSON fields the client sent. Sent means non-zero: every field is a pointer,
+// slice or Nullable, so only an omitted one is zero (TestSentFieldKinds
+// enforces it). Walking the visible fields (the embedded group's too) keeps new
+// project fields covered without a second list. The type parameter admits the
+// two structs by value, so a pointer cannot reach reflection.
+func errProjectOnly[T ProjectAdd | ProjectEdit](kind Kind, v T) error {
 	rv := reflect.ValueOf(v)
 	var sent []string
 	for _, f := range reflect.VisibleFields(rv.Type()) {

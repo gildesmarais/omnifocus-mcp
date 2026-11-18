@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -467,5 +468,31 @@ func TestCheckStatusAllowsUnsetAndSupported(t *testing.T) {
 	}
 	if err := checkStatus(addStatuses, kindFolder, "Active"); err == nil || !strings.Contains(err.Error(), "not supported for folder") {
 		t.Errorf("folder add status: %v", err)
+	}
+}
+
+// errProjectOnly reads "sent" as "non-zero", which holds only if an omitted
+// field is zero and a sent one never is: a plain bool, string or int would
+// read false/""/0 as not sent, and a field without a JSON name could not be
+// reported. So every visible field of the project-only structs is a pointer, a
+// slice or a Nullable, and is named.
+func TestSentFieldKinds(t *testing.T) {
+	for _, rt := range []reflect.Type{reflect.TypeFor[ProjectAdd](), reflect.TypeFor[ProjectEdit]()} {
+		n := 0
+		for _, f := range reflect.VisibleFields(rt) {
+			if f.Anonymous { // an embedded group; its fields are visible here too
+				continue
+			}
+			n++
+			if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name == "" || name == "-" {
+				t.Errorf("%s.%s: needs a JSON name to be reported as sent (got %q)", rt, f.Name, f.Tag.Get("json"))
+			}
+			if k := f.Type.Kind(); k != reflect.Pointer && k != reflect.Slice && !strings.HasPrefix(f.Type.Name(), "Nullable[") {
+				t.Errorf("%s.%s is a %s: it must be a pointer, slice or Nullable so that an omitted field is the only zero one", rt, f.Name, f.Type)
+			}
+		}
+		if n < 8 {
+			t.Errorf("%s: only %d fields visited; the walk lost the embedded group", rt, n)
+		}
 	}
 }
