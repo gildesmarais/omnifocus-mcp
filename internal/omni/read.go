@@ -266,13 +266,14 @@ func resolveBound(field string, s *string, end bool) (time.Time, error) {
 // resolveRange resolves the _after/_before pair of one date field (either may
 // be nil) and rejects an _after later than its _before.
 func resolveRange(field string, after, before *string) error {
+	given := [2]string{text(after), text(before)} // as the client sent them, for the error
 	lo, errLo := resolveBound(field+"_after", after, false)
 	hi, errHi := resolveBound(field+"_before", before, true)
 	if err := errors.Join(errLo, errHi); err != nil {
 		return err
 	}
 	if !lo.IsZero() && !hi.IsZero() && lo.After(hi) {
-		return fmt.Errorf("%s_after: %s is later than %s_before %s", field, *after, field, *before)
+		return fmt.Errorf("%s_after: %s is later than %s_before %s", field, given[0], field, given[1])
 	}
 	return nil
 }

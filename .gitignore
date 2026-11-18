@@ -3,3 +3,4 @@ omnifocus-mcp
 *.out
 .env
 .DS_Store
+.claude/

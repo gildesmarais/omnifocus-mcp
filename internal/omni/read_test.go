@@ -282,6 +282,14 @@ func TestListTasksSendsFlagFilters(t *testing.T) {
 	}
 }
 
+// The error shows the client's values, not the timestamps the bounds expand to.
+func TestResolveRangeErrorShowsOriginalValues(t *testing.T) {
+	f := TaskFilter{DueAfter: "2026-11-20", DueBefore: "2026-11-19"}
+	if err := f.resolve(); err == nil || err.Error() != "due_after: 2026-11-20 is later than due_before 2026-11-19" {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestListTasksRejectsContradictions(t *testing.T) {
 	yes, no := true, false
 	for name, tc := range map[string]struct {

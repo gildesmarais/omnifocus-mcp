@@ -10,7 +10,7 @@
   }
 
   let pool = flattenedTasks;
-  if (args.inbox === true) pool = flattenedTasks.filter(t => t.inInbox); // `inbox` alone lists top-level tasks only
+  if (args.inbox === true) pool = flattenedTasks.filter(t => t.inInbox);
   else if (args.project) {
     const ps = flattenedProjects.filter(p => match(p, args.project));
     if (ps.length === 0) return [];
