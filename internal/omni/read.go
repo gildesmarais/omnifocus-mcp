@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -46,7 +47,27 @@ type Repetition struct {
 	Method string `json:"method"`
 }
 
-// Project is a project with its folder, tags and dates.
+// ReviewInterval is how often a project is reviewed. Unit is one of days, weeks,
+// months or years (OmniFocus also reports hours on read).
+type ReviewInterval struct {
+	Steps int    `json:"steps" jsonschema:"1 or more"`
+	Unit  string `json:"unit" jsonschema:"days, weeks, months or years"`
+}
+
+// reviewUnits are the units a write may set; OmniFocus silently resets any other spelling to 1 week.
+var reviewUnits = []string{"days", "weeks", "months", "years"}
+
+func (r ReviewInterval) check() error {
+	if r.Steps < 1 {
+		return fmt.Errorf("reviewInterval.steps: %d must be >= 1", r.Steps)
+	}
+	if !slices.Contains(reviewUnits, r.Unit) {
+		return fmt.Errorf("reviewInterval.unit: %q must be one of %v", r.Unit, reviewUnits)
+	}
+	return nil
+}
+
+// Project is a project with its folder, tags, dates and review schedule.
 type Project struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -62,6 +83,10 @@ type Project struct {
 	Due         string `json:"due,omitempty"`
 	Planned     string `json:"planned,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
+
+	ReviewInterval *ReviewInterval `json:"reviewInterval,omitempty"`
+	NextReview     string          `json:"nextReviewDate,omitempty"`
+	LastReview     string          `json:"lastReviewDate,omitempty"`
 }
 
 // Tag is a tag with its open-task count.
@@ -102,6 +127,8 @@ type ProjectFilter struct {
 	Folder string `json:"folder,omitempty" jsonschema:"folder id or exact name; includes subfolders"`
 	Search string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
 	Limit  *int   `json:"limit,omitempty" jsonschema:"max results (default 50); null returns all"`
+
+	ReviewDueBefore string `json:"review_due_before,omitempty" jsonschema:"projects whose next review is on or before this date; YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 }
 
 var projectStatuses = map[string]bool{"Active": true, "OnHold": true, "Done": true, "Dropped": true}
@@ -154,7 +181,7 @@ func (b *Bridge) ListProjects(ctx context.Context, f ProjectFilter) ([]Project, 
 	if f.Status != "" && !projectStatuses[f.Status] {
 		return nil, fmt.Errorf("status: %q must be Active, OnHold, Done or Dropped", f.Status)
 	}
-	if err := checkLimit(f.Limit); err != nil {
+	if err := errors.Join(checkDate("review_due_before", f.ReviewDueBefore), checkLimit(f.Limit)); err != nil {
 		return nil, err
 	}
 	var out []Project

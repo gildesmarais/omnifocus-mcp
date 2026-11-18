@@ -12,12 +12,14 @@ import (
 func TestScriptGuardsPresent(t *testing.T) {
 	src := func(name string) string { return mustRead("js/" + name + ".js") }
 	for name, wants := range map[string][]string{
-		"prelude":            {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`},
-		scriptEditTasks.name: {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)"},
-		scriptAddTasks.name:  {`findTask(a.parent, "parent task")`},
-		scriptTasks.name:     {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)"},
-		scriptDelete.name:    {"o.flattenedTasks", "o.flattenedChildren", "remaining(", "drop it instead"},
-		scriptDrop.name:      {"flattenedTags", "inside(o, g)", "remaining task(s)"},
+		"prelude":                {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`},
+		scriptEditTasks.name:     {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)"},
+		scriptAddTasks.name:      {`findTask(a.parent, "parent task")`},
+		scriptTasks.name:         {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)"},
+		scriptDelete.name:        {"o.flattenedTasks", "o.flattenedChildren", "remaining(", "drop it instead"},
+		scriptEditStructure.name: {"o.reviewInterval = r", "o.lastReviewDate = new Date()", "o.nextReviewDate = parseDate("},
+		scriptProjects.name:      {"p.reviewInterval", "p.nextReviewDate <= reviewDue"},
+		scriptDrop.name:          {"flattenedTags", "inside(o, g)", "remaining task(s)"},
 	} {
 		for _, w := range wants {
 			if !strings.Contains(src(name), w) {

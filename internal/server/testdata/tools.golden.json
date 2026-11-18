@@ -592,7 +592,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; sequential (project); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder only. Dropping and deleting are separate tools. Returns one result per item.",
+      "description": "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; sequential (project); review (project only): reviewInterval {steps\u003e=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder only. Dropping and deleting are separate tools. Returns one result per item.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -633,6 +633,10 @@
                     "string"
                   ]
                 },
+                "nextReviewDate": {
+                  "description": "project only; OmniFocus truncates it to local midnight; not with reviewed",
+                  "type": "string"
+                },
                 "reorder": {
                   "additionalProperties": false,
                   "description": "mutually exclusive with move; the sibling's parent becomes the parent",
@@ -648,6 +652,32 @@
                     "null",
                     "object"
                   ]
+                },
+                "reviewInterval": {
+                  "additionalProperties": false,
+                  "description": "project only; cannot be cleared; does not move nextReviewDate",
+                  "properties": {
+                    "steps": {
+                      "description": "1 or more",
+                      "type": "integer"
+                    },
+                    "unit": {
+                      "description": "days, weeks, months or years",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "steps",
+                    "unit"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
+                "reviewed": {
+                  "description": "project only: mark reviewed now; OmniFocus recomputes nextReviewDate from the interval",
+                  "type": "boolean"
                 },
                 "sequential": {
                   "description": "project only",
@@ -1172,7 +1202,13 @@
           "id": {
             "type": "string"
           },
+          "lastReviewDate": {
+            "type": "string"
+          },
           "name": {
+            "type": "string"
+          },
+          "nextReviewDate": {
             "type": "string"
           },
           "note": {
@@ -1180,6 +1216,27 @@
           },
           "planned": {
             "type": "string"
+          },
+          "reviewInterval": {
+            "additionalProperties": false,
+            "properties": {
+              "steps": {
+                "description": "1 or more",
+                "type": "integer"
+              },
+              "unit": {
+                "description": "days, weeks, months or years",
+                "type": "string"
+              }
+            },
+            "required": [
+              "steps",
+              "unit"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
           },
           "sequential": {
             "type": "boolean"
@@ -1579,7 +1636,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "List projects, optionally filtered by status, folder or search. Limit defaults to 50; null returns all.",
+      "description": "List projects, optionally filtered by status, folder, search or review_due_before (next review on or before a date). Records include reviewInterval, nextReviewDate and lastReviewDate. Limit defaults to 50; null returns all.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1594,6 +1651,10 @@
               "null",
               "integer"
             ]
+          },
+          "review_due_before": {
+            "description": "projects whose next review is on or before this date; YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
           },
           "search": {
             "description": "case-insensitive substring over name and note",
@@ -1654,7 +1715,13 @@
                 "id": {
                   "type": "string"
                 },
+                "lastReviewDate": {
+                  "type": "string"
+                },
                 "name": {
+                  "type": "string"
+                },
+                "nextReviewDate": {
                   "type": "string"
                 },
                 "note": {
@@ -1662,6 +1729,27 @@
                 },
                 "planned": {
                   "type": "string"
+                },
+                "reviewInterval": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "steps": {
+                      "description": "1 or more",
+                      "type": "integer"
+                    },
+                    "unit": {
+                      "description": "days, weeks, months or years",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "steps",
+                    "unit"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
                 },
                 "sequential": {
                   "type": "boolean"

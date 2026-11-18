@@ -86,7 +86,9 @@ Getters are per type (`get_task`, `get_project`, `get_tag`, `get_folder`) rather
   - `limit` (default 50; `null` means all)
 
   Each task has id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed and status. It also has `estimatedMinutes` and `repetition` (`{rule, method}`: RRULE string and repetition method) when they are set.
-- `list_projects`: `status` filter (`Active`, `OnHold`, `Done`, `Dropped`), optional `folder`, `search`, `limit`.
+- `list_projects`: `status` filter (`Active`, `OnHold`, `Done`, `Dropped`), optional `folder`, `search`, `review_due_before` (a date; projects whose `nextReviewDate` is on or before it, a date-only value covering its whole day), `limit`.
+
+  Each project (also from `get_project`) has `reviewInterval` (`{steps, unit}`), `nextReviewDate` and `lastReviewDate` when set. The unit is `days`, `weeks`, `months` or `years` (`hours` can appear on read). Combine `review_due_before` with `status: Active` to get the review queue, since completed and dropped projects keep their review dates.
 - `list_tags`: includes status and `remainingTasks`.
 - `list_folders`: includes parent and status.
 - `list_perspectives`: `{perspectives: [{id|null, name, builtin}]}`.
@@ -115,6 +117,10 @@ Each tool takes `{items: [...]}` and returns `{results: [{id, kind, ok, error?, 
   - Project status: `Active`, `OnHold`, `Done`.
   - Tag status: `Active`, `OnHold`. `Active` re-activates a dropped tag.
   - Folders: rename, move and reorder only.
+  - Project review (rejected on tags and folders):
+    - `reviewInterval: {steps, unit}` with `steps` an integer of at least 1 and `unit` one of `days`, `weeks`, `months`, `years`. It cannot be cleared. Changing it does not move `nextReviewDate`.
+    - `nextReviewDate` (a date). OmniFocus truncates it to local midnight, so `2026-12-01T13:45:00` is stored as `2026-12-01T00:00:00`.
+    - `reviewed: true` marks the project reviewed now. OmniFocus sets `lastReviewDate` to now and `nextReviewDate` to the last review plus the interval, at local midnight. It cannot be combined with `nextReviewDate`. With `reviewInterval` in the same item, the new interval applies.
 
 ### Destructive
 
@@ -140,7 +146,7 @@ make live    # integration tests against the real OmniFocus
 make mutate  # opt-in mutation testing (gremlins); PKG=./internal/omni narrows it, DIFF=main mutates only code changed since main
 ```
 
-Unit tests fake the script runner and never touch OmniFocus. `make live` needs OmniFocus running with Automation permission. It reads your database and creates, edits and deletes its own objects: tasks in an "MCP Sandbox" project (the project itself stays), an "MCP Sandbox Folder" and `mcp-test-*` tags. Run it on a test database if you'd rather not have those appear in your sync.
+Unit tests fake the script runner and never touch OmniFocus. `make live` needs OmniFocus running with Automation permission. It reads your database and creates, edits and deletes its own objects: tasks in an "MCP Sandbox" project (the project itself stays), an "MCP Sandbox Folder", `mcp-test-*` tags and `mcp-test-*` projects. Run it on a test database if you'd rather not have those appear in your sync.
 
 Layout:
 

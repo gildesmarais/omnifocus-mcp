@@ -74,7 +74,7 @@ func addReadTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_projects",
-		Description: "List projects, optionally filtered by status, folder or search. Limit defaults to 50; null returns all.",
+		Description: "List projects, optionally filtered by status, folder, search or review_due_before (next review on or before a date). Records include reviewInterval, nextReviewDate and lastReviewDate. Limit defaults to 50; null returns all.",
 		Annotations: readOnly,
 		InputSchema: withLimitDefault[omni.ProjectFilter](),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in omni.ProjectFilter) (*mcp.CallToolResult, listProjectsOut, error) {

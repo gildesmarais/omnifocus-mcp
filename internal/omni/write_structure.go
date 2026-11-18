@@ -60,6 +60,10 @@ type StructEdit struct {
 	Sequential *bool          `json:"sequential,omitempty" jsonschema:"project only"`
 	Move       *StructMove    `json:"move,omitempty" jsonschema:"parent: folder id (project, folder), tag id (tag) or null for the root"`
 	Reorder    *StructReorder `json:"reorder,omitempty" jsonschema:"mutually exclusive with move; the sibling's parent becomes the parent"`
+
+	ReviewInterval *ReviewInterval `json:"reviewInterval,omitempty" jsonschema:"project only; cannot be cleared; does not move nextReviewDate"`
+	NextReviewDate string          `json:"nextReviewDate,omitempty" jsonschema:"project only; OmniFocus truncates it to local midnight; not with reviewed"`
+	Reviewed       bool            `json:"reviewed,omitempty" jsonschema:"project only: mark reviewed now; OmniFocus recomputes nextReviewDate from the interval"`
 }
 
 // StructRef names one object for drop or delete.
@@ -109,6 +113,26 @@ func (p StructEdit) changesNothing() bool {
 	return reflect.ValueOf(p).IsZero()
 }
 
+// checkReview validates the project review fields: project only, a valid
+// interval and date, and reviewed excludes nextReviewDate (OmniFocus derives it).
+func (p StructEdit) checkReview() error {
+	if p.ReviewInterval == nil && p.NextReviewDate == "" && !p.Reviewed {
+		return nil
+	}
+	if p.Kind != kindProject {
+		return fmt.Errorf("reviewInterval, nextReviewDate and reviewed: only for projects, not %s", p.Kind)
+	}
+	var iv error
+	if p.ReviewInterval != nil {
+		iv = p.ReviewInterval.check()
+	}
+	err := errors.Join(iv, checkDate("nextReviewDate", p.NextReviewDate))
+	if p.Reviewed && p.NextReviewDate != "" {
+		err = errors.Join(err, errors.New("reviewed and nextReviewDate are mutually exclusive: marking reviewed sets nextReviewDate"))
+	}
+	return err
+}
+
 // validAdd checks the add item and returns the validated input.
 func validAdd(a StructAdd) (StructAdd, error) {
 	if err := errors.Join(checkKind(a.Kind, kindProject, kindTag, kindFolder), nonEmpty("name", a.Name), checkStatus(a.Kind, a.Status)); err != nil {
@@ -132,6 +156,9 @@ func validEdit(p StructEdit) (StructEdit, error) {
 	}
 	if p.Sequential != nil && p.Kind != kindProject {
 		return StructEdit{}, errors.New("sequential: only for projects")
+	}
+	if err := p.checkReview(); err != nil {
+		return StructEdit{}, err
 	}
 	if p.Move != nil && p.Reorder != nil {
 		return StructEdit{}, errors.New("move and reorder are mutually exclusive")

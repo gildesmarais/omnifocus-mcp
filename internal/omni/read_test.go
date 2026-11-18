@@ -100,3 +100,27 @@ func TestGetters(t *testing.T) {
 		t.Fatal("want id required error")
 	}
 }
+
+func TestProjectDecodesReview(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"p1","name":"P","status":"Active","tags":[],"reviewInterval":{"steps":2,"unit":"weeks"},"nextReviewDate":"2026-12-02T00:00:00","lastReviewDate":"2026-11-18T09:30:00"},{"id":"p2","name":"Q","status":"Active","tags":[]}]`}
+	got, err := (&Bridge{Runner: r}).ListProjects(context.Background(), ProjectFilter{ReviewDueBefore: "2026-12-02"})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	if ri := got[0].ReviewInterval; ri == nil || ri.Steps != 2 || ri.Unit != "weeks" || got[0].NextReview != "2026-12-02T00:00:00" || got[0].LastReview != "2026-11-18T09:30:00" {
+		t.Fatalf("bad decode %+v", got[0])
+	}
+	if got[1].ReviewInterval != nil || got[1].NextReview != "" || got[1].LastReview != "" {
+		t.Fatalf("want omitted review fields %+v", got[1])
+	}
+	if !strings.Contains(r.src, `\"review_due_before\":\"2026-12-02\"`) {
+		t.Errorf("filter not passed through: %s", r.src)
+	}
+}
+
+func TestListProjectsRejectsBadReviewDate(t *testing.T) {
+	r := &captureRunner{res: `[]`}
+	if _, err := (&Bridge{Runner: r}).ListProjects(context.Background(), ProjectFilter{ReviewDueBefore: "soon"}); err == nil || r.src != "" {
+		t.Fatalf("want validation error before any script, got %v src=%q", err, r.src)
+	}
+}

@@ -10,6 +10,11 @@
     };
     if (p.note) o.note = p.note;
     const f = ref(p.parentFolder); if (f) o.folder = f;
+    const ri = p.reviewInterval; // no enumerable keys: read the fields explicitly
+    if (ri) o.reviewInterval = { steps: ri.steps, unit: ri.unit };
+    const nr = iso(p.nextReviewDate), lr = iso(p.lastReviewDate);
+    if (nr) o.nextReviewDate = nr;
+    if (lr) o.lastReviewDate = lr;
     return withDates(o, p);
   }
 
@@ -22,12 +27,15 @@
     for (let f = p.parentFolder; f; f = f.parent) if (match(f, args.folder)) return true;
     return false;
   };
+  // A date-only bound covers its whole day, so a review due that day matches.
+  const reviewDue = args.review_due_before ? parseDate(args.review_due_before.length === 10 ? args.review_due_before + "T23:59:59" : args.review_due_before) : null;
   const limit = args.limit == null ? Infinity : args.limit;
   const out = [];
   for (const p of flattenedProjects) {
     if (out.length >= limit) break;
     if (args.status && statusName(p.status) !== args.status) continue;
     if (args.folder && !inFolder(p)) continue;
+    if (reviewDue && !(p.nextReviewDate && p.nextReviewDate <= reviewDue)) continue;
     if (search && !(p.name.toLowerCase().includes(search) || p.note.toLowerCase().includes(search))) continue;
     out.push(shape(p));
   }

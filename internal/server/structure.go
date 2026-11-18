@@ -35,7 +35,7 @@ func addStructureTools(s *mcp.Server, b *omni.Bridge) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "edit",
-		Description: "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; sequential (project); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder only. Dropping and deleting are separate tools. Returns one result per item.",
+		Description: "Patch projects, tags or folders in one batch: rename; project status Active/OnHold/Done; tag status Active/OnHold; sequential (project); review (project only): reviewInterval {steps>=1, unit days|weeks|months|years}, nextReviewDate (truncated to local midnight), reviewed true to mark reviewed now (recomputes nextReviewDate; not with nextReviewDate); move under a parent id or to the root (parent null); reorder before or after a sibling of the same kind. Folders: rename, move, reorder only. Dropping and deleting are separate tools. Returns one result per item.",
 		Annotations: notDestructive,
 		InputSchema: writeSchema[editIn](),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in editIn) (*mcp.CallToolResult, structOut, error) {

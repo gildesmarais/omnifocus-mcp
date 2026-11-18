@@ -283,3 +283,79 @@ func TestLiveKindAndDeleteGuards(t *testing.T) {
 		t.Fatalf("delete dropped project with tasks: %+v %v", rs, err)
 	}
 }
+
+// Creates one project "mcp-test-review-*" at the root and deletes it at the end.
+func TestLiveProjectReview(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	name := "mcp-test-review-" + time.Now().Format("150405")
+	rs, err := b.AddStructure(ctx, []StructAdd{{Kind: "project", Name: name}})
+	if err != nil || !rs[0].OK {
+		t.Fatalf("%+v %v", rs, err)
+	}
+	id := rs[0].ID
+	t.Cleanup(func() {
+		ref := []StructRef{{Kind: "project", ID: id}}
+		b.DropObjects(ctx, ref)
+		b.DeleteObjects(ctx, ref)
+		leftovers(t, b)
+	})
+	edit := func(e StructEdit) {
+		t.Helper()
+		e.Kind, e.ID = "project", id
+		if rs, err := b.EditStructure(ctx, []StructEdit{e}); err != nil || !rs[0].OK {
+			t.Fatalf("%+v %v", rs, err)
+		}
+	}
+	get := func() Project {
+		t.Helper()
+		p, err := b.GetProject(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	const layout = "2006-01-02T15:04:05"
+	midnight := func(d time.Time) string {
+		return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location()).Format(layout)
+	}
+
+	edit(StructEdit{ReviewInterval: &ReviewInterval{Steps: 2, Unit: "weeks"}})
+	if ri := get().ReviewInterval; ri == nil || ri.Steps != 2 || ri.Unit != "weeks" {
+		t.Fatalf("interval: %+v", ri)
+	}
+
+	now := time.Now()
+	edit(StructEdit{Reviewed: true})
+	p := get()
+	if want := midnight(now.AddDate(0, 0, 14)); p.NextReview != want {
+		t.Fatalf("nextReviewDate after reviewed: got %q want %q", p.NextReview, want)
+	}
+	if p.LastReview == "" || p.LastReview[:10] != now.Format("2006-01-02") {
+		t.Fatalf("lastReviewDate: %q", p.LastReview)
+	}
+
+	edit(StructEdit{NextReviewDate: "2030-01-15T13:45:00"})
+	if got := get().NextReview; got != "2030-01-15T00:00:00" {
+		t.Fatalf("nextReviewDate truncates to midnight: got %q", got)
+	}
+	if ri := get().ReviewInterval; ri == nil || ri.Steps != 2 || ri.Unit != "weeks" {
+		t.Fatalf("interval must survive a date edit: %+v", ri)
+	}
+
+	listed := func(before string) bool {
+		t.Helper()
+		ps, err := b.ListProjects(ctx, ProjectFilter{Search: name, ReviewDueBefore: before})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(ps) == 1 && ps[0].ID == id
+	}
+	if !listed("2030-01-15") || !listed("2030-01-16T00:00:00") || listed("2030-01-14") {
+		t.Fatal("review_due_before must include the due day and exclude earlier bounds")
+	}
+
+	if rs, err := b.EditStructure(ctx, []StructEdit{{Kind: "project", ID: id, ReviewInterval: &ReviewInterval{Steps: 1, Unit: "week"}}}); err != nil || rs[0].OK {
+		t.Fatalf("singular unit must be refused: %+v %v", rs, err)
+	}
+}

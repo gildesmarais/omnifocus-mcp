@@ -22,6 +22,14 @@
     if (has(p, "name")) o.name = p.name;
     if (p.status) o.status = (tag ? Tag.Status : Project.Status)[p.status];
     if (has(p, "sequential")) o.sequential = p.sequential;
+    if (p.reviewInterval) { // no constructor: mutate the existing object and assign it back
+      const r = o.reviewInterval;
+      r.steps = p.reviewInterval.steps;
+      r.unit = p.reviewInterval.unit;
+      o.reviewInterval = r;
+    }
+    if (p.nextReviewDate) o.nextReviewDate = parseDate(p.nextReviewDate);
+    if (p.reviewed) o.lastReviewDate = new Date(); // OmniFocus recomputes nextReviewDate from the interval
     return shapeStruct(p.kind, o);
   });
 })
