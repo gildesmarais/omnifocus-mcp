@@ -4,6 +4,7 @@ package omni
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -46,8 +47,7 @@ func TestLiveStructureWrites(t *testing.T) {
 	var created []StructRef // fallback cleanup, newest first on use
 	track := func(k Kind, id string) { created = append(created, StructRef{Kind: k, ID: id}) }
 	t.Cleanup(func() {
-		for i := len(created) - 1; i >= 0; i-- {
-			c := created[i]
+		for _, c := range slices.Backward(created) {
 			if c.Kind == kindTag || c.Kind == kindFolder {
 				drop(c.Kind, c.ID)
 			}
@@ -196,9 +196,9 @@ func TestLiveKindAndDeleteGuards(t *testing.T) {
 	suffix := time.Now().Format("150405")
 	var created []StructRef
 	t.Cleanup(func() {
-		for i := len(created) - 1; i >= 0; i-- {
-			b.DropObjects(ctx, []StructRef{created[i]})
-			b.DeleteObjects(ctx, []StructRef{created[i]})
+		for _, c := range slices.Backward(created) {
+			b.DropObjects(ctx, []StructRef{c})
+			b.DeleteObjects(ctx, []StructRef{c})
 		}
 		leftovers(t, b)
 	})
