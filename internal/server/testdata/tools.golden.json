@@ -2317,6 +2317,10 @@
             "description": "added on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
             "type": "string"
           },
+          "added_before": {
+            "description": "added on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
           "available": {
             "description": "true: not blocked, deferred, completed or dropped",
             "type": "boolean"
@@ -2370,6 +2374,10 @@
           },
           "modified_after": {
             "description": "modified on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
+            "type": "string"
+          },
+          "modified_before": {
+            "description": "modified on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset",
             "type": "string"
           },
           "planned_after": {

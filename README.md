@@ -83,7 +83,7 @@ Getters are per type (`get_task`, `get_project`, `get_tag`, `get_folder`) rather
   - `project`, `tag` (id or name)
   - `available` (bool: not blocked, deferred, completed or dropped), `flagged`, `completed` (bool)
   - `untagged` (no tags), `repeating` (has a repetition rule), `dropped` (bools: `true` returns only those, `false` excludes them)
-  - Range filters (dates), each on one date: `due_before`, `due_after`, `defer_before`, `defer_after`, `planned_before`, `planned_after`, `completed_before`, `completed_after` (the completion date), `modified_after`, `added_after`. `_before` means on or before and `_after` on or after. A date-only value covers its whole local day: as a `_before` bound it ends at 23:59:59 that day, as an `_after` bound it starts at 00:00:00. A task without that date never matches a bound on it. `review_due_before` on `list_projects` follows the same rule.
+  - Range filters (dates), each on one date: `due_before`, `due_after`, `defer_before`, `defer_after`, `planned_before`, `planned_after`, `completed_before`, `completed_after` (the completion date), `modified_before`, `modified_after`, `added_before`, `added_after`. `_before` means on or before and `_after` on or after. A date-only value covers its whole local day: as a `_before` bound it ends at 23:59:59 that day, as an `_after` bound it starts at 00:00:00. A task without that date never matches a bound on it. `review_due_before` on `list_projects` follows the same rule.
   - `search` (substring over name and note)
   - `limit` (default 50; `null` means all)
 

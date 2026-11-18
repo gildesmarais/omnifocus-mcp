@@ -143,7 +143,9 @@ type TaskFilter struct {
 	PlannedAfter    string `json:"planned_after,omitempty" jsonschema:"planned date on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 	CompletedBefore string `json:"completed_before,omitempty" jsonschema:"completed on or before; a date-only value covers its whole day. Matches completed tasks only. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 	CompletedAfter  string `json:"completed_after,omitempty" jsonschema:"completed on or after; a date-only value starts at 00:00. Matches completed tasks only. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
+	ModifiedBefore  string `json:"modified_before,omitempty" jsonschema:"modified on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 	ModifiedAfter   string `json:"modified_after,omitempty" jsonschema:"modified on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
+	AddedBefore     string `json:"added_before,omitempty" jsonschema:"added on or before; a date-only value covers its whole day. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 	AddedAfter      string `json:"added_after,omitempty" jsonschema:"added on or after; a date-only value starts at 00:00. YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS (local time), or RFC 3339 with offset"`
 
 	Search string `json:"search,omitempty" jsonschema:"case-insensitive substring over name and note"`
@@ -214,8 +216,8 @@ func (f *TaskFilter) resolve() error {
 		{"defer", &f.DeferAfter, &f.DeferBefore},
 		{"planned", &f.PlannedAfter, &f.PlannedBefore},
 		{"completed", &f.CompletedAfter, &f.CompletedBefore},
-		{"modified", &f.ModifiedAfter, nil},
-		{"added", &f.AddedAfter, nil},
+		{"modified", &f.ModifiedAfter, &f.ModifiedBefore},
+		{"added", &f.AddedAfter, &f.AddedBefore},
 	} {
 		errs = append(errs, resolveRange(r.field, r.after, r.before))
 	}

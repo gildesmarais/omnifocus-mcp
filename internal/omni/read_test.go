@@ -121,7 +121,7 @@ func TestListTasksRejectsBadInput(t *testing.T) {
 	for _, f := range []TaskFilter{
 		{DueBefore: "tomorrow"}, {DeferBefore: "2026-13-01"}, {Limit: &neg},
 		{DueAfter: "x"}, {DeferAfter: "x"}, {PlannedBefore: "x"}, {PlannedAfter: "x"},
-		{CompletedBefore: "x"}, {CompletedAfter: "x"}, {ModifiedAfter: "x"}, {AddedAfter: "x"},
+		{CompletedBefore: "x"}, {CompletedAfter: "x"}, {ModifiedAfter: "x"}, {AddedAfter: "x"}, {ModifiedBefore: "x"}, {AddedBefore: "x"},
 	} {
 		if _, err := b.ListTasks(context.Background(), f); err == nil {
 			t.Errorf("%+v: want error", f)
@@ -231,7 +231,9 @@ var dateWire = []struct {
 	{"planned_after", func(f *TaskFilter, s string) { f.PlannedAfter = s }, false},
 	{"completed_before", func(f *TaskFilter, s string) { f.CompletedBefore = s }, true},
 	{"completed_after", func(f *TaskFilter, s string) { f.CompletedAfter = s }, false},
+	{"modified_before", func(f *TaskFilter, s string) { f.ModifiedBefore = s }, true},
 	{"modified_after", func(f *TaskFilter, s string) { f.ModifiedAfter = s }, false},
+	{"added_before", func(f *TaskFilter, s string) { f.AddedBefore = s }, true},
 	{"added_after", func(f *TaskFilter, s string) { f.AddedAfter = s }, false},
 }
 
@@ -301,6 +303,8 @@ func TestListTasksRejectsContradictions(t *testing.T) {
 		want string
 	}{
 		"after later than before":           {TaskFilter{DueAfter: "2026-11-20", DueBefore: "2026-11-19"}, "due_after"},
+		"modified after later than before":  {TaskFilter{ModifiedAfter: "2026-11-20", ModifiedBefore: "2026-11-19"}, "modified_after"},
+		"added after later than before":     {TaskFilter{AddedAfter: "2026-11-20", AddedBefore: "2026-11-19"}, "added_after"},
 		"completed after later than before": {TaskFilter{CompletedAfter: "2026-11-20", CompletedBefore: "2026-11-19"}, "completed_after"},
 		"completed false with after":        {TaskFilter{Completed: &no, CompletedAfter: "2026-11-01"}, "completed: false"},
 		"completed false with before":       {TaskFilter{Completed: &no, CompletedBefore: "2026-11-01"}, "completed: false"},
