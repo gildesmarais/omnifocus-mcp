@@ -149,7 +149,7 @@ Items are `{kind: task|project|tag|folder, id}`, with the same result shape as s
 ```sh
 make ready   # gofmt check, go vet, unit tests, build
 make live    # integration tests against the real OmniFocus
-make mutate  # opt-in mutation testing (gremlins); PKG=./internal/omni narrows it, DIFF=main mutates only code changed since main
+make mutate  # opt-in mutation testing (gremlins, all mutators via .gremlins.yaml); PKG=./internal/omni narrows it, DIFF=main mutates only code changed since main
 ```
 
 Unit tests fake the script runner and never touch OmniFocus. `make live` needs OmniFocus running with Automation permission. It reads your database and creates, edits and deletes its own objects: tasks in an "MCP Sandbox" project (the project itself stays), an "MCP Sandbox Folder", `mcp-test-*` tags and `mcp-test-*` projects. Run it on a test database if you'd rather not have those appear in your sync.
