@@ -4,8 +4,12 @@ BIN := omnifocus-mcp
 MISE := $(shell command -v mise >/dev/null 2>&1 && printf 'mise exec -- ')
 GO := $(MISE)go
 GOFMT := $(MISE)gofmt
+GREMLINS := $(MISE)gremlins
+PKG ?= ./internal
+DIFF ?=
+TIMEOUT_COEF ?= 30
 
-.PHONY: check lint lintfix ready build live
+.PHONY: check lint lintfix ready build live mutate
 
 check:
 	$(GO) test ./...
@@ -28,3 +32,8 @@ build:
 # objects in an "MCP Sandbox" project, "MCP Sandbox Folder" and "mcp-test-*" tags.
 live:
 	$(GO) test -tags live -count=1 -v ./internal/omni/...
+
+# Opt-in mutation testing (unit tests only, no live tag). PKG narrows the path;
+# DIFF=<ref> mutates only code changed since that ref.
+mutate:
+	$(GREMLINS) unleash $(if $(DIFF),--diff $(DIFF)) --timeout-coefficient $(TIMEOUT_COEF) $(PKG)
