@@ -159,3 +159,103 @@ func sandboxProject(t *testing.T, b *Bridge) string {
 	}
 	return id
 }
+
+// Estimate, repetition, group flags, restore and the record's new fields, on
+// uniquely named tasks in the sandbox project, deleted at the end.
+func TestLiveTaskFieldWrites(t *testing.T) {
+	ctx := context.Background()
+	b := New()
+	sandbox := sandboxProject(t, b)
+	name := fmt.Sprintf("mcp-live-fields-%d", time.Now().UnixNano())
+
+	create := func(a TaskAdd) Task {
+		t.Helper()
+		rs, err := b.AddTasks(ctx, []TaskAdd{a})
+		if err != nil || len(rs) != 1 || !rs[0].OK || rs[0].Task == nil {
+			t.Fatalf("add %q: %+v %v", a.Name, rs, err)
+		}
+		id := rs[0].ID
+		t.Cleanup(func() {
+			if r, err := b.DeleteObjects(ctx, []StructRef{{Kind: "task", ID: id}}); err != nil || !r[0].OK {
+				t.Errorf("cleanup %s: %+v %v", id, r, err)
+			}
+		})
+		return *rs[0].Task
+	}
+	edit := func(p TaskEdit) Task {
+		t.Helper()
+		rs, err := b.EditTasks(ctx, []TaskEdit{p})
+		if err != nil || len(rs) != 1 || !rs[0].OK || rs[0].Task == nil {
+			t.Fatalf("edit %+v: %+v %v", p, rs, err)
+		}
+		got, err := b.GetTask(ctx, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	// Repeating task with a due date and an estimate.
+	rep := Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}
+	added := create(TaskAdd{Name: name + "-rep", Project: sandbox, Due: "2026-12-04", EstimatedMinutes: new(45), Repetition: &rep})
+	x, err := b.GetTask(ctx, added.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x.Repetition == nil || *x.Repetition != rep || x.EstimatedMinutes == nil || *x.EstimatedMinutes != 45 || x.Due != "2026-12-04T00:00:00" {
+		t.Fatalf("add read back: %+v", x)
+	}
+	if x.Added == "" || x.Modified == "" || x.CompletedAt != "" || x.DropDate != "" {
+		t.Fatalf("dates: %+v", x)
+	}
+
+	next := Repetition{Rule: "FREQ=DAILY;INTERVAL=2", ScheduleType: "FromCompletion", Anchor: "DeferDate", CatchUp: false}
+	x = edit(TaskEdit{ID: added.ID, EstimatedMinutes: Nullable[int]{Set: true, Value: 0}, Repetition: Nullable[Repetition]{Set: true, Value: next}})
+	if x.Repetition == nil || *x.Repetition != next || x.EstimatedMinutes != nil && *x.EstimatedMinutes != 0 {
+		t.Fatalf("edit repetition: %+v", x)
+	}
+	x = edit(TaskEdit{ID: added.ID, EstimatedMinutes: Nullable[int]{Set: true, Null: true}, Repetition: Nullable[Repetition]{Set: true, Null: true}})
+	if x.Repetition != nil || x.EstimatedMinutes != nil {
+		t.Fatalf("clear: %+v", x)
+	}
+
+	// OmniFocus rejects an unparsable rule; the item fails and the task is untouched.
+	rs, err := b.EditTasks(ctx, []TaskEdit{{ID: added.ID, Repetition: Nullable[Repetition]{Set: true, Value: Repetition{Rule: "NOT A RULE", ScheduleType: "Regularly", Anchor: "DueDate"}}}})
+	if err != nil || len(rs) != 1 || rs[0].OK {
+		t.Fatalf("invalid RRULE string must fail the item: %+v %v", rs, err)
+	}
+	if x, err = b.GetTask(ctx, added.ID); err != nil || x.Repetition != nil {
+		t.Fatalf("failed item changed the task: %+v %v", x, err)
+	}
+
+	// Group flags on a parent with a child.
+	parent := create(TaskAdd{Name: name + "-parent", Project: sandbox})
+	create(TaskAdd{Name: name + "-child", Parent: parent.ID})
+	x = edit(TaskEdit{ID: parent.ID, Sequential: new(true), CompletedByChildren: new(true)})
+	if !x.HasChildren || !x.Sequential || !x.CompletedByChildren {
+		t.Fatalf("group flags: %+v", x)
+	}
+	x = edit(TaskEdit{ID: parent.ID, Sequential: new(false), CompletedByChildren: new(false)})
+	if !x.HasChildren || x.Sequential || x.CompletedByChildren {
+		t.Fatalf("group flags off: %+v", x)
+	}
+
+	// Drop through the destructive tool, then restore.
+	solo := create(TaskAdd{Name: name + "-solo", Project: sandbox})
+	if rs, err := b.DropObjects(ctx, []StructRef{{Kind: "task", ID: solo.ID}}); err != nil || !rs[0].OK {
+		t.Fatalf("drop: %+v %v", rs, err)
+	}
+	if x, err = b.GetTask(ctx, solo.ID); err != nil || !x.Dropped || x.DropDate == "" {
+		t.Fatalf("dropped: %+v %v", x, err)
+	}
+	x = edit(TaskEdit{ID: solo.ID, Restore: true})
+	if x.Status != "Available" || x.Dropped || x.DropDate != "" {
+		t.Fatalf("restore: %+v", x)
+	}
+
+	// completedAt appears with completion.
+	x = edit(TaskEdit{ID: solo.ID, Complete: true})
+	if !x.Completed || x.CompletedAt == "" {
+		t.Fatalf("complete: %+v", x)
+	}
+}

@@ -5,6 +5,7 @@ package omni
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,8 +72,11 @@ func TestLiveReads(t *testing.T) {
 		if x.EstimatedMinutes != nil && *x.EstimatedMinutes <= 0 {
 			t.Fatalf("task %s estimatedMinutes %d", x.ID, *x.EstimatedMinutes)
 		}
-		if x.Repetition != nil && (!strings.HasPrefix(x.Repetition.Rule, "FREQ=") || x.Repetition.Method == "") {
+		if x.Repetition != nil && (!strings.HasPrefix(x.Repetition.Rule, "FREQ=") || !slices.Contains(repetitionScheduleTypes, x.Repetition.ScheduleType) || !slices.Contains(repetitionAnchors, x.Repetition.Anchor)) {
 			t.Fatalf("task %s repetition %+v", x.ID, *x.Repetition)
+		}
+		if x.Added == "" || x.Modified == "" {
+			t.Fatalf("task %s lacks added/modified: %+v", x.ID, x)
 		}
 	}
 	if len(all) > 0 {

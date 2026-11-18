@@ -2,6 +2,7 @@ package omni
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -30,16 +31,82 @@ func TestListTasksDecodes(t *testing.T) {
 }
 
 func TestTaskDecodesEstimateAndRepetition(t *testing.T) {
-	r := &captureRunner{res: `[{"id":"a","name":"A","status":"Available","tags":[],"estimatedMinutes":25,"repetition":{"rule":"FREQ=WEEKLY;INTERVAL=1;BYDAY=FR","method":"Fixed"}},{"id":"b","name":"B","status":"Available","tags":[]}]`}
+	r := &captureRunner{res: `[{"id":"a","name":"A","status":"Available","tags":[],"estimatedMinutes":25,"repetition":{"rule":"FREQ=WEEKLY;INTERVAL=1;BYDAY=FR","scheduleType":"FromCompletion","anchor":"DeferDate","catchUp":true}},{"id":"b","name":"B","status":"Available","tags":[]}]`}
 	got, err := (&Bridge{Runner: r}).ListTasks(context.Background(), TaskFilter{})
 	if err != nil || len(got) != 2 {
 		t.Fatalf("got %+v err %v", got, err)
 	}
-	if got[0].EstimatedMinutes == nil || *got[0].EstimatedMinutes != 25 || got[0].Repetition == nil || got[0].Repetition.Method != "Fixed" || got[0].Repetition.Rule != "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR" {
+	if got[0].EstimatedMinutes == nil || *got[0].EstimatedMinutes != 25 || got[0].Repetition == nil || *got[0].Repetition != (Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "FromCompletion", Anchor: "DeferDate", CatchUp: true}) {
 		t.Fatalf("bad decode %+v", got[0])
 	}
 	if got[1].EstimatedMinutes != nil || got[1].Repetition != nil {
 		t.Fatalf("want omitted fields %+v", got[1])
+	}
+}
+
+func TestTaskDecodesGroupFlagsAndDates(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"a","name":"A","status":"Dropped","tags":[],"hasChildren":true,"sequential":true,"completedByChildren":true,"completedAt":"2026-11-18T10:00:00","dropDate":"2026-11-18T11:00:00","added":"2026-11-01T08:00:00","modified":"2026-11-17T09:00:00"},{"id":"b","name":"B","status":"Available","tags":[]}]`}
+	got, err := (&Bridge{Runner: r}).ListTasks(context.Background(), TaskFilter{})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	a := got[0]
+	if !a.HasChildren || !a.Sequential || !a.CompletedByChildren || a.CompletedAt != "2026-11-18T10:00:00" || a.DropDate != "2026-11-18T11:00:00" || a.Added != "2026-11-01T08:00:00" || a.Modified != "2026-11-17T09:00:00" {
+		t.Fatalf("bad decode %+v", a)
+	}
+	if b := got[1]; b.HasChildren || b.Sequential || b.CompletedByChildren || b.DropDate != "" {
+		t.Fatalf("want zero values %+v", b)
+	}
+	raw, err := json.Marshal(got[1])
+	if err != nil || strings.Contains(string(raw), "dropDate") || !strings.Contains(string(raw), `"hasChildren":false`) {
+		t.Fatalf("dropDate must be omitted, flags always present: %s %v", raw, err)
+	}
+}
+
+func TestRepetitionCheck(t *testing.T) {
+	ok := Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: "DueDate"}
+	if err := ok.check(); err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range repetitionScheduleTypes {
+		if err := (Repetition{Rule: "FREQ=DAILY", ScheduleType: st, Anchor: "PlannedDate", CatchUp: true}).check(); err != nil {
+			t.Errorf("%s: %v", st, err)
+		}
+	}
+	for _, a := range repetitionAnchors {
+		if err := (Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: a}).check(); err != nil {
+			t.Errorf("%s: %v", a, err)
+		}
+	}
+	for name, tc := range map[string]struct {
+		r    Repetition
+		want string
+	}{
+		"empty rule":     {Repetition{Rule: " ", ScheduleType: "Regularly", Anchor: "DueDate"}, "repetition.rule"},
+		"missing type":   {Repetition{Rule: "FREQ=DAILY", Anchor: "DueDate"}, "repetition.scheduleType"},
+		"None type":      {Repetition{Rule: "FREQ=DAILY", ScheduleType: "None", Anchor: "DueDate"}, "repetition.scheduleType"},
+		"lowercase type": {Repetition{Rule: "FREQ=DAILY", ScheduleType: "regularly", Anchor: "DueDate"}, "repetition.scheduleType"},
+		"missing anchor": {Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly"}, "repetition.anchor"},
+		"unknown anchor": {Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: "StartDate"}, "repetition.anchor"},
+	} {
+		if err := tc.r.check(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: want error naming %s, got %v", name, tc.want, err)
+		}
+	}
+	err := Repetition{}.check()
+	for _, want := range []string{"repetition.rule", "repetition.scheduleType", "repetition.anchor"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("zero value must report every bad field, missing %s: %v", want, err)
+		}
+	}
+}
+
+func TestCheckEstimate(t *testing.T) {
+	if checkEstimate(0) != nil || checkEstimate(90) != nil {
+		t.Error("0 and positive minutes are valid")
+	}
+	if checkEstimate(-1) == nil {
+		t.Error("negative minutes must be rejected")
 	}
 }
 

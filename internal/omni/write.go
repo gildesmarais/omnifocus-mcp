@@ -9,18 +9,21 @@ import (
 	"strings"
 )
 
-// NullableString distinguishes an omitted field (Set false) from an explicit
-// null (Set and Null), which clears the value.
-type NullableString struct {
+// Nullable distinguishes an omitted field (Set false) from an explicit null
+// (Set and Null), which clears the value.
+type Nullable[T any] struct {
 	Set, Null bool
-	Value     string
+	Value     T
 }
 
-// IsZero reports an omitted field, so `omitzero` leaves it out of the payload.
-func (n NullableString) IsZero() bool { return !n.Set }
+// NullableString is a clearable string patch field.
+type NullableString = Nullable[string]
 
-// MarshalJSON emits null for an explicit clear, the string otherwise.
-func (n NullableString) MarshalJSON() ([]byte, error) {
+// IsZero reports an omitted field, so `omitzero` leaves it out of the payload.
+func (n Nullable[T]) IsZero() bool { return !n.Set }
+
+// MarshalJSON emits null for an explicit clear, the value otherwise.
+func (n Nullable[T]) MarshalJSON() ([]byte, error) {
 	if n.Null || !n.Set {
 		return []byte("null"), nil
 	}
@@ -28,10 +31,10 @@ func (n NullableString) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements json.Unmarshaler; it only runs for present fields.
-func (n *NullableString) UnmarshalJSON(b []byte) error {
+func (n *Nullable[T]) UnmarshalJSON(b []byte) error {
 	n.Set = true
 	if string(b) == "null" {
-		n.Null, n.Value = true, ""
+		n.Null, n.Value = true, *new(T)
 		return nil
 	}
 	n.Null = false
@@ -49,6 +52,11 @@ type TaskAdd struct {
 	Project string   `json:"project,omitempty" jsonschema:"project id; omit both project and parent for the inbox"`
 	Parent  string   `json:"parent,omitempty" jsonschema:"parent task id"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"tag ids or unambiguous names"`
+
+	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty" jsonschema:"0 or more"`
+	Repetition          *Repetition `json:"repetition,omitempty"`
+	Sequential          bool        `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
+	CompletedByChildren bool        `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
 }
 
 // Move is a move target: exactly one of Project, Inbox or Parent.
@@ -65,7 +73,7 @@ type TagEdit struct {
 }
 
 // TaskEdit is one edit_tasks patch as received from the client. Omitted means
-// unchanged; null clears Note, Defer, Due and Planned.
+// unchanged; null clears Note, Defer, Due, Planned, EstimatedMinutes and Repetition.
 type TaskEdit struct {
 	ID         string         `json:"id"`
 	Name       *string        `json:"name,omitempty"`
@@ -78,6 +86,12 @@ type TaskEdit struct {
 	Uncomplete bool           `json:"uncomplete,omitempty"`
 	Move       *Move          `json:"move,omitempty"`
 	Tags       *TagEdit       `json:"tags,omitempty"`
+
+	EstimatedMinutes    Nullable[int]        `json:"estimatedMinutes,omitzero" jsonschema:"0 or more; null clears"`
+	Repetition          Nullable[Repetition] `json:"repetition,omitzero" jsonschema:"null clears"`
+	Sequential          *bool                `json:"sequential,omitempty" jsonschema:"subtasks run in order"`
+	CompletedByChildren *bool                `json:"completedByChildren,omitempty" jsonschema:"completes when its last subtask does"`
+	Restore             bool                 `json:"restore,omitempty" jsonschema:"un-drop a dropped task; not with complete"`
 }
 
 // TaskResult is the outcome of one batch item. Task is the record after the write.
@@ -100,6 +114,11 @@ type addItem struct {
 	Project string   `json:"project,omitempty"`
 	Parent  string   `json:"parent,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
+
+	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty"`
+	Repetition          *Repetition `json:"repetition,omitempty"`
+	Sequential          bool        `json:"sequential,omitempty"`
+	CompletedByChildren bool        `json:"completedByChildren,omitempty"`
 }
 
 // patchItem is a validated edit_tasks patch in script form. Unset clearable
@@ -117,6 +136,12 @@ type patchItem struct {
 	Move       *Move          `json:"move,omitempty"`
 	TagsAdd    []string       `json:"tagsAdd,omitempty"`
 	TagsRemove []string       `json:"tagsRemove,omitempty"`
+
+	EstimatedMinutes    Nullable[int]        `json:"estimatedMinutes,omitzero"`
+	Repetition          Nullable[Repetition] `json:"repetition,omitzero"`
+	Sequential          *bool                `json:"sequential,omitempty"`
+	CompletedByChildren *bool                `json:"completedByChildren,omitempty"`
+	Restore             bool                 `json:"restore,omitempty"`
 }
 
 // changesNothing reports a patch that sets no field besides its id.
@@ -160,7 +185,14 @@ func resolveTags(refs []string, tags []Tag) ([]string, error) {
 
 // newAddItem validates a and returns its script form.
 func newAddItem(a TaskAdd, tags []Tag) (addItem, error) {
-	if err := errors.Join(nonEmpty("name", a.Name), checkDate("defer", a.Defer), checkDate("due", a.Due), checkDate("planned", a.Planned)); err != nil {
+	errs := []error{nonEmpty("name", a.Name), checkDate("defer", a.Defer), checkDate("due", a.Due), checkDate("planned", a.Planned)}
+	if a.EstimatedMinutes != nil {
+		errs = append(errs, checkEstimate(*a.EstimatedMinutes))
+	}
+	if a.Repetition != nil {
+		errs = append(errs, a.Repetition.check())
+	}
+	if err := errors.Join(errs...); err != nil {
 		return addItem{}, err
 	}
 	if a.Project != "" && a.Parent != "" {
@@ -170,7 +202,8 @@ func newAddItem(a TaskAdd, tags []Tag) (addItem, error) {
 	if err != nil {
 		return addItem{}, err
 	}
-	return addItem{Name: a.Name, Note: a.Note, Flagged: a.Flagged, Defer: a.Defer, Due: a.Due, Planned: a.Planned, Project: a.Project, Parent: a.Parent, Tags: ids}, nil
+	return addItem{Name: a.Name, Note: a.Note, Flagged: a.Flagged, Defer: a.Defer, Due: a.Due, Planned: a.Planned, Project: a.Project, Parent: a.Parent, Tags: ids,
+		EstimatedMinutes: a.EstimatedMinutes, Repetition: a.Repetition, Sequential: a.Sequential, CompletedByChildren: a.CompletedByChildren}, nil
 }
 
 // checkEditDate validates one clearable date patch; unset and null pass.
@@ -190,8 +223,18 @@ func newPatchItem(p TaskEdit, tags []Tag) (patchItem, error) {
 	if err := nonEmpty("id", p.ID); err != nil {
 		return patchItem{}, err
 	}
-	it := patchItem{ID: p.ID, Name: p.Name, Note: p.Note, Flagged: p.Flagged, Defer: p.Defer, Due: p.Due, Planned: p.Planned, Complete: p.Complete, Uncomplete: p.Uncomplete}
+	it := patchItem{ID: p.ID, Name: p.Name, Note: p.Note, Flagged: p.Flagged, Defer: p.Defer, Due: p.Due, Planned: p.Planned, Complete: p.Complete, Uncomplete: p.Uncomplete,
+		EstimatedMinutes: p.EstimatedMinutes, Repetition: p.Repetition, Sequential: p.Sequential, CompletedByChildren: p.CompletedByChildren, Restore: p.Restore}
 	errs := []error{checkEditDate("defer", p.Defer), checkEditDate("due", p.Due), checkEditDate("planned", p.Planned)}
+	if m := p.EstimatedMinutes; m.Set && !m.Null {
+		errs = append(errs, checkEstimate(m.Value))
+	}
+	if r := p.Repetition; r.Set && !r.Null {
+		errs = append(errs, r.Value.check())
+	}
+	if p.Restore && p.Complete {
+		errs = append(errs, errors.New("restore and complete are mutually exclusive"))
+	}
 	if p.Name != nil {
 		errs = append(errs, nonEmpty("name", *p.Name))
 	}

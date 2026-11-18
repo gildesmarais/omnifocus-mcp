@@ -12,9 +12,13 @@ import (
 func TestScriptGuardsPresent(t *testing.T) {
 	src := func(name string) string { return mustRead("js/" + name + ".js") }
 	for name, wants := range map[string][]string{
-		"prelude":                {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`},
-		scriptEditTasks.name:     {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)"},
-		scriptAddTasks.name:      {`findTask(a.parent, "parent task")`},
+		"prelude": {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`,
+			"Task.RepetitionRule(r.rule, null, st, an, r.catchUp)", "Task.RepetitionScheduleType[r.scheduleType]", "Task.AnchorDateKey[r.anchor]",
+			"scheduleType: statusName(r.scheduleType)", "anchor: statusName(r.anchorDateKey)", "catchUp: r.catchUpAutomatically",
+			`dropped: st === "Dropped"`, "hasChildren: t.hasChildren", "completedByChildren: t.completedByChildren", "added: iso(t.added)", "modified: iso(t.modified)", "iso(t.dropDate)"},
+		scriptEditTasks.name: {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)",
+			"t.active = true", "t.repetitionRule = rule", "t.estimatedMinutes = p.estimatedMinutes", "t.sequential = p.sequential", "t.completedByChildren = p.completedByChildren"},
+		scriptAddTasks.name:      {`findTask(a.parent, "parent task")`, "makeRule(a.repetition)", "t.estimatedMinutes = a.estimatedMinutes", "t.repetitionRule = rule", "t.sequential = true", "t.completedByChildren = true"},
 		scriptTasks.name:         {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)"},
 		scriptDelete.name:        {"o.flattenedTasks", "o.flattenedChildren", "remaining(", "drop it instead"},
 		scriptEditStructure.name: {"o.reviewInterval = r", "o.lastReviewDate = new Date()", "o.nextReviewDate = parseDate("},

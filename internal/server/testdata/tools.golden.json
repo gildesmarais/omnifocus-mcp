@@ -132,7 +132,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
+      "description": "Create tasks in one batch. Each task goes to the inbox unless project or parent is given. Optional estimatedMinutes, repetition {rule (RRULE), scheduleType Regularly|FromCompletion, anchor DeferDate|DueDate|PlannedDate, catchUp}, sequential and completedByChildren. Returns one result per task (id, ok/error, task record); a bad item does not stop the others.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -141,11 +141,22 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "completedByChildren": {
+                  "description": "completes when its last subtask does",
+                  "type": "boolean"
+                },
                 "defer": {
                   "type": "string"
                 },
                 "due": {
                   "type": "string"
+                },
+                "estimatedMinutes": {
+                  "description": "0 or more",
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
                 },
                 "flagged": {
                   "type": "boolean"
@@ -166,6 +177,41 @@
                 "project": {
                   "description": "project id; omit both project and parent for the inbox",
                   "type": "string"
+                },
+                "repetition": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor": {
+                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                      "type": "string"
+                    },
+                    "catchUp": {
+                      "description": "skip occurrences already past",
+                      "type": "boolean"
+                    },
+                    "rule": {
+                      "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                      "type": "string"
+                    },
+                    "scheduleType": {
+                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rule",
+                    "scheduleType",
+                    "anchor",
+                    "catchUp"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
+                "sequential": {
+                  "description": "subtasks run in order",
+                  "type": "boolean"
                 },
                 "tags": {
                   "description": "tag ids or unambiguous names",
@@ -214,6 +260,9 @@
                 "task": {
                   "additionalProperties": false,
                   "properties": {
+                    "added": {
+                      "type": "string"
+                    },
                     "available": {
                       "type": "boolean"
                     },
@@ -226,7 +275,13 @@
                     "completedAt": {
                       "type": "string"
                     },
+                    "completedByChildren": {
+                      "type": "boolean"
+                    },
                     "defer": {
+                      "type": "string"
+                    },
+                    "dropDate": {
                       "type": "string"
                     },
                     "dropped": {
@@ -244,11 +299,17 @@
                     "flagged": {
                       "type": "boolean"
                     },
+                    "hasChildren": {
+                      "type": "boolean"
+                    },
                     "id": {
                       "type": "string"
                     },
                     "inbox": {
                       "type": "boolean"
+                    },
+                    "modified": {
+                      "type": "string"
                     },
                     "name": {
                       "type": "string"
@@ -300,21 +361,36 @@
                     "repetition": {
                       "additionalProperties": false,
                       "properties": {
-                        "method": {
+                        "anchor": {
+                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
                           "type": "string"
                         },
+                        "catchUp": {
+                          "description": "skip occurrences already past",
+                          "type": "boolean"
+                        },
                         "rule": {
+                          "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                          "type": "string"
+                        },
+                        "scheduleType": {
+                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
                           "type": "string"
                         }
                       },
                       "required": [
                         "rule",
-                        "method"
+                        "scheduleType",
+                        "anchor",
+                        "catchUp"
                       ],
                       "type": [
                         "null",
                         "object"
                       ]
+                    },
+                    "sequential": {
+                      "type": "boolean"
                     },
                     "status": {
                       "type": "string"
@@ -352,7 +428,12 @@
                     "available",
                     "blocked",
                     "inbox",
-                    "tags"
+                    "tags",
+                    "hasChildren",
+                    "sequential",
+                    "completedByChildren",
+                    "added",
+                    "modified"
                   ],
                   "type": [
                     "null",
@@ -488,7 +569,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Drop tasks, projects, tags or folders. Reversible through this server only for projects and tags (edit status back to Active); a dropped folder (which also drops its projects) or task cannot be restored through these tools. Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
+      "description": "Drop tasks, projects, tags or folders. Reversible through this server for projects and tags (edit status back to Active) and tasks (edit_tasks restore true); a dropped folder (which also drops its projects) cannot be restored through these tools. Dropping a project drops its tasks. Guard enforced by OmniFocus script: a tag is refused while it or any descendant tag has remaining tasks (untag or complete them first). Returns one result per item; a refusal comes back as that item's error.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -778,17 +859,24 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Patch tasks in one batch: name, note, flagged, defer/due/planned (null clears), complete or uncomplete, move to a project, the inbox or a parent task, tags add/remove by id or name. Returns one result per patch (id, ok/error, updated task record).",
+      "description": "Patch tasks in one batch: name, note, flagged, defer/due/planned (null clears), complete or uncomplete, move to a project, the inbox or a parent task, tags add/remove by id or name, estimatedMinutes and repetition (null clears), sequential, completedByChildren, restore true to un-drop a dropped task (not with complete). Returns one result per patch (id, ok/error, updated task record).",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "patches": {
-            "description": "patches applied in order; omitted field = unchanged, null clears note/defer/due/planned",
+            "description": "patches applied in order; omitted field = unchanged, null clears note/defer/due/planned/estimatedMinutes/repetition",
             "items": {
               "additionalProperties": false,
               "properties": {
                 "complete": {
                   "type": "boolean"
+                },
+                "completedByChildren": {
+                  "description": "completes when its last subtask does",
+                  "type": [
+                    "null",
+                    "boolean"
+                  ]
                 },
                 "defer": {
                   "type": [
@@ -799,6 +887,14 @@
                 "due": {
                   "type": [
                     "string",
+                    "null"
+                  ]
+                },
+                "estimatedMinutes": {
+                  "description": "0 or more; null clears",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
                     "null"
                   ]
                 },
@@ -845,6 +941,53 @@
                   "type": [
                     "string",
                     "null"
+                  ]
+                },
+                "repetition": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "anchor": {
+                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
+                          "type": "string"
+                        },
+                        "catchUp": {
+                          "description": "skip occurrences already past",
+                          "type": "boolean"
+                        },
+                        "rule": {
+                          "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                          "type": "string"
+                        },
+                        "scheduleType": {
+                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "rule",
+                        "scheduleType",
+                        "anchor",
+                        "catchUp"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "null clears"
+                },
+                "restore": {
+                  "description": "un-drop a dropped task; not with complete",
+                  "type": "boolean"
+                },
+                "sequential": {
+                  "description": "subtasks run in order",
+                  "type": [
+                    "null",
+                    "boolean"
                   ]
                 },
                 "tags": {
@@ -914,6 +1057,9 @@
                 "task": {
                   "additionalProperties": false,
                   "properties": {
+                    "added": {
+                      "type": "string"
+                    },
                     "available": {
                       "type": "boolean"
                     },
@@ -926,7 +1072,13 @@
                     "completedAt": {
                       "type": "string"
                     },
+                    "completedByChildren": {
+                      "type": "boolean"
+                    },
                     "defer": {
+                      "type": "string"
+                    },
+                    "dropDate": {
                       "type": "string"
                     },
                     "dropped": {
@@ -944,11 +1096,17 @@
                     "flagged": {
                       "type": "boolean"
                     },
+                    "hasChildren": {
+                      "type": "boolean"
+                    },
                     "id": {
                       "type": "string"
                     },
                     "inbox": {
                       "type": "boolean"
+                    },
+                    "modified": {
+                      "type": "string"
                     },
                     "name": {
                       "type": "string"
@@ -1000,21 +1158,36 @@
                     "repetition": {
                       "additionalProperties": false,
                       "properties": {
-                        "method": {
+                        "anchor": {
+                          "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
                           "type": "string"
                         },
+                        "catchUp": {
+                          "description": "skip occurrences already past",
+                          "type": "boolean"
+                        },
                         "rule": {
+                          "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                          "type": "string"
+                        },
+                        "scheduleType": {
+                          "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
                           "type": "string"
                         }
                       },
                       "required": [
                         "rule",
-                        "method"
+                        "scheduleType",
+                        "anchor",
+                        "catchUp"
                       ],
                       "type": [
                         "null",
                         "object"
                       ]
+                    },
+                    "sequential": {
+                      "type": "boolean"
                     },
                     "status": {
                       "type": "string"
@@ -1052,7 +1225,12 @@
                     "available",
                     "blocked",
                     "inbox",
-                    "tags"
+                    "tags",
+                    "hasChildren",
+                    "sequential",
+                    "completedByChildren",
+                    "added",
+                    "modified"
                   ],
                   "type": [
                     "null",
@@ -1369,6 +1547,9 @@
       "outputSchema": {
         "additionalProperties": false,
         "properties": {
+          "added": {
+            "type": "string"
+          },
           "available": {
             "type": "boolean"
           },
@@ -1381,7 +1562,13 @@
           "completedAt": {
             "type": "string"
           },
+          "completedByChildren": {
+            "type": "boolean"
+          },
           "defer": {
+            "type": "string"
+          },
+          "dropDate": {
             "type": "string"
           },
           "dropped": {
@@ -1399,11 +1586,17 @@
           "flagged": {
             "type": "boolean"
           },
+          "hasChildren": {
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
           "inbox": {
             "type": "boolean"
+          },
+          "modified": {
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -1455,21 +1648,36 @@
           "repetition": {
             "additionalProperties": false,
             "properties": {
-              "method": {
+              "anchor": {
+                "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
                 "type": "string"
               },
+              "catchUp": {
+                "description": "skip occurrences already past",
+                "type": "boolean"
+              },
               "rule": {
+                "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                "type": "string"
+              },
+              "scheduleType": {
+                "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
                 "type": "string"
               }
             },
             "required": [
               "rule",
-              "method"
+              "scheduleType",
+              "anchor",
+              "catchUp"
             ],
             "type": [
               "null",
               "object"
             ]
+          },
+          "sequential": {
+            "type": "boolean"
           },
           "status": {
             "type": "string"
@@ -1507,7 +1715,12 @@
           "available",
           "blocked",
           "inbox",
-          "tags"
+          "tags",
+          "hasChildren",
+          "sequential",
+          "completedByChildren",
+          "added",
+          "modified"
         ],
         "type": "object"
       }
@@ -1950,6 +2163,9 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "added": {
+                  "type": "string"
+                },
                 "available": {
                   "type": "boolean"
                 },
@@ -1962,7 +2178,13 @@
                 "completedAt": {
                   "type": "string"
                 },
+                "completedByChildren": {
+                  "type": "boolean"
+                },
                 "defer": {
+                  "type": "string"
+                },
+                "dropDate": {
                   "type": "string"
                 },
                 "dropped": {
@@ -1980,11 +2202,17 @@
                 "flagged": {
                   "type": "boolean"
                 },
+                "hasChildren": {
+                  "type": "boolean"
+                },
                 "id": {
                   "type": "string"
                 },
                 "inbox": {
                   "type": "boolean"
+                },
+                "modified": {
+                  "type": "string"
                 },
                 "name": {
                   "type": "string"
@@ -2036,21 +2264,36 @@
                 "repetition": {
                   "additionalProperties": false,
                   "properties": {
-                    "method": {
+                    "anchor": {
+                      "description": "the date the rule moves: DeferDate, DueDate or PlannedDate",
                       "type": "string"
                     },
+                    "catchUp": {
+                      "description": "skip occurrences already past",
+                      "type": "boolean"
+                    },
                     "rule": {
+                      "description": "RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR",
+                      "type": "string"
+                    },
+                    "scheduleType": {
+                      "description": "Regularly (fixed schedule) or FromCompletion (counts from completion)",
                       "type": "string"
                     }
                   },
                   "required": [
                     "rule",
-                    "method"
+                    "scheduleType",
+                    "anchor",
+                    "catchUp"
                   ],
                   "type": [
                     "null",
                     "object"
                   ]
+                },
+                "sequential": {
+                  "type": "boolean"
                 },
                 "status": {
                   "type": "string"
@@ -2088,7 +2331,12 @@
                 "available",
                 "blocked",
                 "inbox",
-                "tags"
+                "tags",
+                "hasChildren",
+                "sequential",
+                "completedByChildren",
+                "added",
+                "modified"
               ],
               "type": "object"
             },

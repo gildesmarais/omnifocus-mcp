@@ -19,13 +19,19 @@
       }
       const tagsOf = ids => (ids || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
       const add = tagsOf(p.tagsAdd), rem = tagsOf(p.tagsRemove);
+      const rule = has(p, "repetition") && p.repetition !== null ? makeRule(p.repetition) : null;
       if (pos) moveTasks([t], pos);
+      if (p.restore) t.active = true;
       if (has(p, "name")) t.name = p.name;
       if (has(p, "note")) t.note = p.note === null ? "" : p.note;
       if (has(p, "flagged")) t.flagged = p.flagged;
       date(p, "defer", d => { t.deferDate = d; });
       date(p, "due", d => { t.dueDate = d; });
       date(p, "planned", d => { t.plannedDate = d; });
+      if (has(p, "estimatedMinutes")) t.estimatedMinutes = p.estimatedMinutes;
+      if (has(p, "repetition")) t.repetitionRule = rule;
+      if (has(p, "sequential")) t.sequential = p.sequential;
+      if (has(p, "completedByChildren")) t.completedByChildren = p.completedByChildren;
       add.forEach(g => t.addTag(g));
       rem.forEach(g => t.removeTag(g));
       if (p.complete) t.markComplete();

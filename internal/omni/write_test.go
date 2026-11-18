@@ -52,6 +52,119 @@ func TestAddItemWire(t *testing.T) {
 	}
 }
 
+const repJSON = `{"rule":"FREQ=WEEKLY;INTERVAL=1;BYDAY=FR","scheduleType":"Regularly","anchor":"DueDate","catchUp":true}`
+
+func TestAddItemWireTaskFields(t *testing.T) {
+	zero := 0
+	for name, tc := range map[string]struct {
+		in   TaskAdd
+		want string
+	}{
+		"all": {TaskAdd{Name: "n", EstimatedMinutes: new(45), Repetition: &Repetition{Rule: "FREQ=WEEKLY;INTERVAL=1;BYDAY=FR", ScheduleType: "Regularly", Anchor: "DueDate", CatchUp: true}, Sequential: true, CompletedByChildren: true},
+			`{"name":"n","estimatedMinutes":45,"repetition":` + repJSON + `,"sequential":true,"completedByChildren":true}`},
+		"zero estimate is sent": {TaskAdd{Name: "n", EstimatedMinutes: &zero}, `{"name":"n","estimatedMinutes":0}`},
+		"catchUp false is sent": {TaskAdd{Name: "n", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "FromCompletion", Anchor: "DeferDate"}},
+			`{"name":"n","repetition":{"rule":"FREQ=DAILY","scheduleType":"FromCompletion","anchor":"DeferDate","catchUp":false}}`},
+	} {
+		it, err := newAddItem(tc.in, nil)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if got := wire(t, it); got != tc.want {
+			t.Errorf("%s:\n got %s\nwant %s", name, got, tc.want)
+		}
+	}
+}
+
+func TestAddValidationTaskFields(t *testing.T) {
+	neg := -5
+	good := Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: "DueDate"}
+	for name, a := range map[string]TaskAdd{
+		"negative estimate":    {Name: "x", EstimatedMinutes: &neg},
+		"empty rule":           {Name: "x", Repetition: &Repetition{ScheduleType: "Regularly", Anchor: "DueDate"}},
+		"missing scheduleType": {Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY", Anchor: "DueDate"}},
+		"None scheduleType":    {Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "None", Anchor: "DueDate"}},
+		"missing anchor":       {Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly"}},
+		"invalid anchor":       {Name: "x", Repetition: &Repetition{Rule: "FREQ=DAILY", ScheduleType: "Regularly", Anchor: "Nope"}},
+	} {
+		if _, err := newAddItem(a, nil); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+	if _, err := newAddItem(TaskAdd{Name: "x", EstimatedMinutes: new(0), Repetition: &good}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPatchItemWireTaskFields(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"estimate":           {`{"id":"a","estimatedMinutes":30}`, `{"id":"a","estimatedMinutes":30}`},
+		"estimate zero":      {`{"id":"a","estimatedMinutes":0}`, `{"id":"a","estimatedMinutes":0}`},
+		"estimate clear":     {`{"id":"a","estimatedMinutes":null}`, `{"id":"a","estimatedMinutes":null}`},
+		"repetition":         {`{"id":"a","repetition":` + repJSON + `}`, `{"id":"a","repetition":` + repJSON + `}`},
+		"repetition clear":   {`{"id":"a","repetition":null}`, `{"id":"a","repetition":null}`},
+		"flags true":         {`{"id":"a","sequential":true,"completedByChildren":true}`, `{"id":"a","sequential":true,"completedByChildren":true}`},
+		"flags false":        {`{"id":"a","sequential":false,"completedByChildren":false}`, `{"id":"a","sequential":false,"completedByChildren":false}`},
+		"restore":            {`{"id":"a","restore":true}`, `{"id":"a","restore":true}`},
+		"restore uncomplete": {`{"id":"a","restore":true,"uncomplete":true}`, `{"id":"a","uncomplete":true,"restore":true}`},
+	} {
+		it, err := newPatchItem(decodeEdit(t, tc.in), testTags)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if got := wire(t, it); got != tc.want {
+			t.Errorf("%s:\n got %s\nwant %s", name, got, tc.want)
+		}
+	}
+}
+
+func TestPatchValidationTaskFields(t *testing.T) {
+	bad := map[string]string{
+		"negative estimate":    `{"id":"a","estimatedMinutes":-1}`,
+		"empty rule":           `{"id":"a","repetition":{"rule":"","scheduleType":"Regularly","anchor":"DueDate","catchUp":false}}`,
+		"missing scheduleType": `{"id":"a","repetition":{"rule":"FREQ=DAILY","anchor":"DueDate","catchUp":false}}`,
+		"None scheduleType":    `{"id":"a","repetition":{"rule":"FREQ=DAILY","scheduleType":"None","anchor":"DueDate","catchUp":false}}`,
+		"missing anchor":       `{"id":"a","repetition":{"rule":"FREQ=DAILY","scheduleType":"Regularly","catchUp":false}}`,
+		"invalid anchor":       `{"id":"a","repetition":{"rule":"FREQ=DAILY","scheduleType":"Regularly","anchor":"Whenever","catchUp":false}}`,
+		"restore and complete": `{"id":"a","restore":true,"complete":true}`,
+	}
+	for name, js := range bad {
+		if _, err := newPatchItem(decodeEdit(t, js), testTags); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+	_, err := newPatchItem(decodeEdit(t, `{"id":"a","restore":true,"complete":true}`), nil)
+	if err == nil || !strings.Contains(err.Error(), "restore") {
+		t.Errorf("restore+complete error must name restore: %v", err)
+	}
+}
+
+func TestPatchTaskFieldsCountAsChanges(t *testing.T) {
+	for _, js := range []string{`{"id":"a","estimatedMinutes":0}`, `{"id":"a","sequential":false}`, `{"id":"a","completedByChildren":false}`, `{"id":"a","repetition":null}`, `{"id":"a","restore":true}`} {
+		if _, err := newPatchItem(decodeEdit(t, js), nil); err != nil {
+			t.Errorf("%s: %v", js, err)
+		}
+	}
+}
+
+func TestNullableWire(t *testing.T) {
+	if got := wire(t, Nullable[int]{Set: true, Null: true}); got != "null" {
+		t.Errorf("clear: %s", got)
+	}
+	if got := wire(t, Nullable[int]{Set: true, Value: 0}); got != "0" {
+		t.Errorf("zero value: %s", got)
+	}
+	var n Nullable[int]
+	if err := json.Unmarshal([]byte(`7`), &n); err != nil || !n.Set || n.Null || n.Value != 7 {
+		t.Errorf("value: %+v %v", n, err)
+	}
+	if err := json.Unmarshal([]byte(`null`), &n); err != nil || !n.Set || !n.Null || n.Value != 0 {
+		t.Errorf("null must reset the value: %+v %v", n, err)
+	}
+}
+
 func TestPatchItemWire(t *testing.T) {
 	for name, tc := range map[string]struct{ in, want string }{
 		"set and clear": {`{"id":"a","defer":null,"due":"2026-11-20","note":null}`, `{"id":"a","note":null,"defer":null,"due":"2026-11-20"}`},
@@ -157,6 +270,26 @@ func TestEditTasksMergesPerItemResults(t *testing.T) {
 	}
 	if strings.Contains(r.src, `nope`) {
 		t.Error("invalid item reached the script")
+	}
+}
+
+func TestTaskFieldsReachScriptAndBadItemsStayOut(t *testing.T) {
+	r := &captureRunner{res: `[{"id":"a","ok":true,"task":{"id":"a","name":"N","status":"Available","tags":[]}}]`}
+	got, err := (&Bridge{Runner: r}).EditTasks(context.Background(), []TaskEdit{
+		decodeEdit(t, `{"id":"a","estimatedMinutes":15,"repetition":`+repJSON+`,"sequential":true,"completedByChildren":true,"restore":true}`),
+		decodeEdit(t, `{"id":"b","restore":true,"complete":true}`),
+		decodeEdit(t, `{"id":"c","estimatedMinutes":-3}`),
+	})
+	if err != nil || len(got) != 3 || !got[0].OK || got[1].OK || got[1].ID != "b" || !strings.Contains(got[1].Error, "restore") || got[2].OK || !strings.Contains(got[2].Error, "estimatedMinutes") {
+		t.Fatalf("%+v %v", got, err)
+	}
+	for _, want := range []string{`\"estimatedMinutes\":15`, `\"scheduleType\":\"Regularly\"`, `\"anchor\":\"DueDate\"`, `\"catchUp\":true`, `\"sequential\":true`, `\"completedByChildren\":true`, `\"restore\":true`} {
+		if !strings.Contains(r.src, want) {
+			t.Errorf("script payload lacks %s: %s", want, r.src)
+		}
+	}
+	if strings.Contains(r.src, `\"id\":\"b\"`) || strings.Contains(r.src, `\"id\":\"c\"`) {
+		t.Error("invalid items reached the script")
 	}
 }
 

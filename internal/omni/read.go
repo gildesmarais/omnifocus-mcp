@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -37,14 +38,55 @@ type Task struct {
 	Planned     string `json:"planned,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
 
-	EstimatedMinutes *int        `json:"estimatedMinutes,omitempty"`
-	Repetition       *Repetition `json:"repetition,omitempty"`
+	EstimatedMinutes    *int        `json:"estimatedMinutes,omitempty"`
+	Repetition          *Repetition `json:"repetition,omitempty"`
+	HasChildren         bool        `json:"hasChildren"`
+	Sequential          bool        `json:"sequential"`
+	CompletedByChildren bool        `json:"completedByChildren"`
+	DropDate            string      `json:"dropDate,omitempty"`
+	Added               string      `json:"added"`
+	Modified            string      `json:"modified"`
 }
 
-// Repetition is a task's repeat rule: an RRULE string and the method name (Fixed, DeferUntilDate, DueDate, ...).
+// Repetition is a repeat rule, as read from OmniFocus and as written: an RRULE
+// string, how the next occurrence is scheduled (ScheduleType), which date the
+// rule moves (Anchor) and whether missed occurrences are skipped (CatchUp). It
+// owns the shape and its validation for every object that repeats.
 type Repetition struct {
-	Rule   string `json:"rule"`
-	Method string `json:"method"`
+	Rule         string `json:"rule" jsonschema:"RRULE string, e.g. FREQ=WEEKLY;INTERVAL=1;BYDAY=FR"`
+	ScheduleType string `json:"scheduleType" jsonschema:"Regularly (fixed schedule) or FromCompletion (counts from completion)"`
+	Anchor       string `json:"anchor" jsonschema:"the date the rule moves: DeferDate, DueDate or PlannedDate"`
+	CatchUp      bool   `json:"catchUp" jsonschema:"skip occurrences already past"`
+}
+
+// Names a write may set. OmniFocus also has a None schedule type, but creating a
+// rule with it throws, so it is not accepted. Go validates against these sets
+// before the scripts index OmniFocus's enums by name.
+var (
+	repetitionScheduleTypes = []string{"Regularly", "FromCompletion"}
+	repetitionAnchors       = []string{"DeferDate", "DueDate", "PlannedDate"}
+)
+
+func (r Repetition) check() error {
+	var errs []error
+	if strings.TrimSpace(r.Rule) == "" {
+		errs = append(errs, errors.New("repetition.rule: must not be empty"))
+	}
+	if !slices.Contains(repetitionScheduleTypes, r.ScheduleType) {
+		errs = append(errs, fmt.Errorf("repetition.scheduleType: %q must be one of %v", r.ScheduleType, repetitionScheduleTypes))
+	}
+	if !slices.Contains(repetitionAnchors, r.Anchor) {
+		errs = append(errs, fmt.Errorf("repetition.anchor: %q must be one of %v", r.Anchor, repetitionAnchors))
+	}
+	return errors.Join(errs...)
+}
+
+// checkEstimate validates an estimate in minutes.
+func checkEstimate(m int) error {
+	if m < 0 {
+		return fmt.Errorf("estimatedMinutes: %d must be >= 0", m)
+	}
+	return nil
 }
 
 // ReviewInterval is how often a project is reviewed. Unit is one of days, weeks,

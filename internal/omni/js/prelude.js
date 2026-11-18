@@ -15,19 +15,30 @@ const withDates = (o, x) => {
   if (dn) o.completedAt = dn;
   return o;
 };
+// A repetition rule as Repetition in read.go (enums print as "[object ...: Name]").
+const shapeRepetition = r => ({ rule: r.ruleString, scheduleType: statusName(r.scheduleType), anchor: statusName(r.anchorDateKey), catchUp: r.catchUpAutomatically });
+// A Repetition from Go as a rule. Go has validated the names against the allowed sets; the guard stops a name that drifts from OmniFocus's enums.
+const makeRule = r => {
+  const st = Task.RepetitionScheduleType[r.scheduleType], an = Task.AnchorDateKey[r.anchor];
+  if (!st || !an) throw new Error("repetition: unknown scheduleType or anchor");
+  return new Task.RepetitionRule(r.rule, null, st, an, r.catchUp);
+};
 // A task as the Task record in read.go.
 const shapeTask = t => {
   const st = statusName(t.taskStatus);
   const o = {
     id: t.id.primaryKey, name: t.name, status: st, flagged: t.flagged,
-    completed: t.completed, dropped: t.dropped, available: OK.has(st), blocked: st === "Blocked",
-    inbox: t.inInbox, tags: t.tags.map(ref)
+    completed: t.completed, dropped: st === "Dropped", available: OK.has(st), blocked: st === "Blocked",
+    inbox: t.inInbox, tags: t.tags.map(ref),
+    hasChildren: t.hasChildren, sequential: t.sequential, completedByChildren: t.completedByChildren,
+    added: iso(t.added), modified: iso(t.modified)
   };
   if (t.note) o.note = t.note;
   const p = ref(t.containingProject); if (p) o.project = p;
   const par = ref(t.parent); if (par) o.parent = par;
   if (t.estimatedMinutes != null) o.estimatedMinutes = t.estimatedMinutes;
-  const rr = t.repetitionRule; if (rr) o.repetition = { rule: rr.ruleString, method: statusName(rr.method) };
+  const rr = t.repetitionRule; if (rr) o.repetition = shapeRepetition(rr);
+  const dd = iso(t.dropDate); if (dd) o.dropDate = dd;
   return withDates(o, t);
 };
 // Structure helpers (add/edit/drop/delete). byKind maps a kind to its class; tags nest under tags, the rest under library.

@@ -69,7 +69,7 @@ Conventions:
 
 - Ids are OmniFocus `primaryKey` strings.
 - Dates are ISO 8601 strings: `2026-11-18`, `2026-11-18T08:00:00`, or with an offset (`2026-11-18T08:00:00Z`, `...+01:00`). No offset means local time. A date-only value means 00:00 local time. Returned dates are local time without an offset.
-- In patches, an omitted field means unchanged and an explicit `null` clears (dates, note).
+- In patches, an omitted field means unchanged and an explicit `null` clears (dates, note, `estimatedMinutes`, `repetition`).
 - Batch tools apply items in order and return one result per item (`ok` or `error`). One failing item never aborts the batch.
 - Invalid input is rejected before any script runs.
 
@@ -85,7 +85,11 @@ Getters are per type (`get_task`, `get_project`, `get_tag`, `get_folder`) rather
   - `search` (substring over name and note)
   - `limit` (default 50; `null` means all)
 
-  Each task has id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed and status. It also has `estimatedMinutes` and `repetition` (`{rule, method}`: RRULE string and repetition method) when they are set.
+  Each task has id, name, note, flagged, project, parent, tags, defer/due/planned dates, completed and status. It also has:
+  - `hasChildren`, `sequential` (subtasks run in order) and `completedByChildren` (completes with its last subtask), always present.
+  - `added` and `modified` dates, always present.
+  - `completedAt` and `dropDate` dates, when set.
+  - `estimatedMinutes` and `repetition`, when set. `repetition` is `{rule, scheduleType, anchor, catchUp}`: an RRULE string, `Regularly` (fixed schedule) or `FromCompletion` (the next occurrence counts from completion), the date the rule moves (`DeferDate`, `DueDate` or `PlannedDate`) and whether missed occurrences are skipped.
 - `list_projects`: `status` filter (`Active`, `OnHold`, `Done`, `Dropped`), optional `folder`, `search`, `review_due_before` (a date; projects whose `nextReviewDate` is on or before it, a date-only value covering its whole day), `limit`.
 
   Each project (also from `get_project`) has `reviewInterval` (`{steps, unit}`), `nextReviewDate` and `lastReviewDate` when set. The unit is `days`, `weeks`, `months` or `years` (`hours` can appear on read). Combine `review_due_before` with `status: Active` to get the review queue, since completed and dropped projects keep their review dates.
@@ -96,12 +100,14 @@ Getters are per type (`get_task`, `get_project`, `get_tag`, `get_folder`) rather
 
 ### Task writes
 
-- `add_tasks`: `{tasks: [{name, note?, flagged?, defer?, due?, planned?, project? | parent? (default inbox), tags?: [id|name]}]}`. Returns `{results: [{id, ok, error?, task?}]}`, one per task in order, with the created task records. Tags are given by id or by a name that matches exactly one tag.
-- `edit_tasks`: `{patches: [{id, name?, note?, flagged?, defer?, due?, planned?, complete? | uncomplete?, move?: {project: id} | {inbox: true} | {parent: id}, tags?: {add?: [..], remove?: [..]}}]}`.
+- `add_tasks`: `{tasks: [{name, note?, flagged?, defer?, due?, planned?, project? | parent? (default inbox), tags?: [id|name], estimatedMinutes?, repetition?, sequential?, completedByChildren?}]}`. `estimatedMinutes` is an integer of at least 0. `repetition` is the object returned on read, `{rule, scheduleType, anchor, catchUp}`, with all four fields required; `scheduleType` is `Regularly` or `FromCompletion`, and a rule anchored on a date the task lacks is accepted. Returns `{results: [{id, ok, error?, task?}]}`, one per task in order, with the created task records. Tags are given by id or by a name that matches exactly one tag.
+- `edit_tasks`: `{patches: [{id, name?, note?, flagged?, defer?, due?, planned?, complete? | uncomplete?, move?: {project: id} | {inbox: true} | {parent: id}, tags?: {add?: [..], remove?: [..]}, estimatedMinutes?, repetition?, sequential?, completedByChildren?, restore?}]}`.
   - `complete` and `uncomplete` are mutually exclusive, and `move` takes exactly one target.
-  - `null` clears `note` and the three dates. `name` cannot be empty, and a patch must change something.
+  - `restore: true` un-drops a dropped task (it becomes available again and loses its `dropDate`). It cannot be combined with `complete`.
+  - `null` clears `note`, the three dates, `estimatedMinutes` and `repetition`. `name` cannot be empty, and a patch must change something.
+  - `estimatedMinutes` and `repetition` take the same values as in `add_tasks`.
   - Returns `{results: [{id, ok, error?, task?}]}` in input order, with the updated task records.
-  - An item that fails validation (bad date, empty name, contradictory move, unknown or ambiguous tag) or fails in OmniFocus (unknown id) gets `ok: false` and leaves the others untouched.
+  - An item that fails validation (bad date, empty name, negative estimate, incomplete repetition, contradictory move or restore, unknown or ambiguous tag) or fails in OmniFocus (unknown id) gets `ok: false` and leaves the others untouched.
   - Edits within one item are not atomic. If a later field throws, the earlier field changes stay applied and the item reports `ok: false`. Re-read the task before retrying.
 
 A project id is not a task id. `get_task`, `edit_tasks`, `add_tasks` parents and `drop`/`delete` with kind `task` reject it with "is a project, use kind project".
@@ -126,7 +132,7 @@ Each tool takes `{items: [...]}` and returns `{results: [{id, kind, ok, error?, 
 
 Items are `{kind: task|project|tag|folder, id}`, with the same result shape as structure writes. The safety checks run inside OmniFocus, because only it can count remaining tasks, and a refusal appears as that item's `error`.
 
-- `drop`: you can undo it through this server only for projects and tags, by editing their status back to `Active`. A dropped folder, which also drops its projects, or a dropped task cannot be restored through these tools. Dropping a project drops its tasks. A tag can be dropped only when neither it nor any descendant tag has remaining tasks.
+- `drop`: you can undo it through this server for projects and tags, by editing their status back to `Active`, and for tasks with `edit_tasks` `restore: true`. A dropped folder, which also drops its projects, cannot be restored through these tools. Dropping a project drops its tasks. A tag can be dropped only when neither it nor any descendant tag has remaining tasks.
 - `delete`: irreversible.
   - Tags and folders are deleted only when already dropped and empty, so delete children first.
   - A project is deleted only when it has no remaining (incomplete) tasks. A dropped project can always be deleted.
