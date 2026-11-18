@@ -144,7 +144,7 @@ func compose(body string, args any) (string, error) {
 // OsascriptRunner is the real Runner.
 type OsascriptRunner struct{}
 
-// jxaWrapper reads the composed script from stdin, so household data never
+// jxaWrapper reads the composed script from stdin, so user data never
 // appears in argv (ps) and large batches do not hit ARG_MAX.
 const jxaWrapper = `ObjC.import('Foundation');
 function run() {

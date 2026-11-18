@@ -23,6 +23,8 @@ ready: lint check build
 build:
 	$(GO) build -o $(BIN) .
 
-# Opt-in, read-only: needs a running OmniFocus with Automation permission.
+# Opt-in: runs against the real OmniFocus (needs it running and Automation
+# permission). Reads your database and creates, edits and deletes its own
+# objects in an "MCP Sandbox" project, "MCP Sandbox Folder" and "mcp-test-*" tags.
 live:
 	$(GO) test -tags live -count=1 -v ./internal/omni/...

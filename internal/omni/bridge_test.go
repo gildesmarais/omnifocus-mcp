@@ -148,14 +148,14 @@ func TestWriteTimeoutLongerAndWarnsOfPartialApply(t *testing.T) {
 }
 
 func TestOsascriptSourceTravelsOnStdinNotArgv(t *testing.T) {
-	cmd := osascriptCmd(context.Background(), "SECRET-HOUSEHOLD-DATA")
+	cmd := osascriptCmd(context.Background(), "SECRET-USER-DATA")
 	for _, a := range cmd.Args {
 		if strings.Contains(a, "SECRET") {
 			t.Fatalf("source leaked into argv: %q", a)
 		}
 	}
 	got, err := io.ReadAll(cmd.Stdin)
-	if err != nil || string(got) != "SECRET-HOUSEHOLD-DATA" {
+	if err != nil || string(got) != "SECRET-USER-DATA" {
 		t.Fatalf("stdin = %q %v", got, err)
 	}
 }
