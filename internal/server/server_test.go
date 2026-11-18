@@ -354,3 +354,24 @@ func TestEditProjectAndFolderRestoreOverMCP(t *testing.T) {
 		t.Fatalf("results: %v", rs)
 	}
 }
+
+// Null means "clear" only on clearable fields; anywhere else the schema rejects
+// the whole call before a script runs.
+func TestNullOnNonClearableFieldRejected(t *testing.T) {
+	for _, c := range []struct {
+		tool, key string
+		item      map[string]any
+	}{
+		{"edit_tasks", "patches", map[string]any{"id": "a", "flagged": nil}},
+		{"edit_tasks", "patches", map[string]any{"id": "a", "move": nil}},
+		{"edit_tasks", "patches", map[string]any{"id": "a", "tags": map[string]any{"add": nil}}},
+		{"edit", "items", map[string]any{"kind": "project", "id": "a", "name": nil}},
+		{"edit", "items", map[string]any{"kind": "project", "id": "a", "reviewInterval": nil}},
+		{"edit", "items", map[string]any{"kind": "project", "id": "a", "reorder": nil}},
+	} {
+		_, r, src := call(t, `[]`, c.tool, map[string]any{c.key: []any{c.item}})
+		if !r.IsError || src != "" {
+			t.Errorf("%s %v: want rejection before any script, got error=%v src=%q", c.tool, c.item, r.IsError, src)
+		}
+	}
+}

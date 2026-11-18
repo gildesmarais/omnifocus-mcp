@@ -733,10 +733,7 @@
               "properties": {
                 "completedByChildren": {
                   "description": "completes when its last task does",
-                  "type": [
-                    "null",
-                    "boolean"
-                  ]
+                  "type": "boolean"
                 },
                 "defer": {
                   "type": [
@@ -759,10 +756,7 @@
                   ]
                 },
                 "flagged": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ]
+                  "type": "boolean"
                 },
                 "id": {
                   "type": "string"
@@ -785,16 +779,10 @@
                   "required": [
                     "parent"
                   ],
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "name": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
+                  "type": "string"
                 },
                 "nextReviewDate": {
                   "description": "OmniFocus truncates it to local midnight; not with reviewed",
@@ -823,10 +811,7 @@
                       "type": "string"
                     }
                   },
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "repetition": {
                   "anyOf": [
@@ -881,10 +866,7 @@
                     "steps",
                     "unit"
                   ],
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "reviewed": {
                   "description": "mark reviewed now; OmniFocus recomputes nextReviewDate from the interval",
@@ -902,25 +884,16 @@
                       "items": {
                         "type": "string"
                       },
-                      "type": [
-                        "null",
-                        "array"
-                      ]
+                      "type": "array"
                     },
                     "remove": {
                       "items": {
                         "type": "string"
                       },
-                      "type": [
-                        "null",
-                        "array"
-                      ]
+                      "type": "array"
                     }
                   },
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "type": {
                   "description": "Parallel, Sequential or SingleActions",
@@ -933,10 +906,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -1028,10 +998,7 @@
                 },
                 "completedByChildren": {
                   "description": "completes when its last subtask does",
-                  "type": [
-                    "null",
-                    "boolean"
-                  ]
+                  "type": "boolean"
                 },
                 "defer": {
                   "type": [
@@ -1054,10 +1021,7 @@
                   ]
                 },
                 "flagged": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ]
+                  "type": "boolean"
                 },
                 "id": {
                   "type": "string"
@@ -1075,16 +1039,10 @@
                       "type": "string"
                     }
                   },
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "name": {
-                  "type": [
-                    "null",
-                    "string"
-                  ]
+                  "type": "string"
                 },
                 "note": {
                   "type": [
@@ -1140,10 +1098,7 @@
                 },
                 "sequential": {
                   "description": "subtasks run in order",
-                  "type": [
-                    "null",
-                    "boolean"
-                  ]
+                  "type": "boolean"
                 },
                 "tags": {
                   "additionalProperties": false,
@@ -1152,25 +1107,16 @@
                       "items": {
                         "type": "string"
                       },
-                      "type": [
-                        "null",
-                        "array"
-                      ]
+                      "type": "array"
                     },
                     "remove": {
                       "items": {
                         "type": "string"
                       },
-                      "type": [
-                        "null",
-                        "array"
-                      ]
+                      "type": "array"
                     }
                   },
-                  "type": [
-                    "null",
-                    "object"
-                  ]
+                  "type": "object"
                 },
                 "uncomplete": {
                   "type": "boolean"
@@ -1181,10 +1127,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           }
         },
         "required": [
