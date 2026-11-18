@@ -1,7 +1,6 @@
 (function (args) {
   // args.items: validated patches. Lookups run before any mutation so a bad
   // target leaves the task untouched; one result per item, failures never abort the batch.
-  const date = (p, k, set) => { if (has(p, k)) set(p[k] === null ? null : parseDate(p[k])); };
   return args.items.map(p => {
     try {
       const t = findTask(p.id);
@@ -15,22 +14,11 @@
           pos = par.ending;
         }
       }
-      const add = tagsOf(p.tagsAdd), rem = tagsOf(p.tagsRemove);
-      const rule = has(p, "repetition") && p.repetition !== null ? makeRule(p.repetition) : null;
+      const write = fieldWriter(p, p.tagsAdd, p.tagsRemove);
       if (pos) moveTasks([t], pos);
       if (p.restore) t.active = true;
       if (has(p, "name")) t.name = p.name;
-      if (has(p, "note")) t.note = p.note === null ? "" : p.note;
-      if (has(p, "flagged")) t.flagged = p.flagged;
-      date(p, "defer", d => { t.deferDate = d; });
-      date(p, "due", d => { t.dueDate = d; });
-      date(p, "planned", d => { t.plannedDate = d; });
-      if (has(p, "estimatedMinutes")) t.estimatedMinutes = p.estimatedMinutes;
-      if (has(p, "repetition")) t.repetitionRule = rule;
-      if (has(p, "sequential")) t.sequential = p.sequential;
-      if (has(p, "completedByChildren")) t.completedByChildren = p.completedByChildren;
-      add.forEach(g => t.addTag(g));
-      rem.forEach(g => t.removeTag(g));
+      write(t);
       if (p.complete) t.markComplete();
       if (p.uncomplete) t.markIncomplete();
       return { id: p.id, ok: true, task: shapeTask(t) };

@@ -4,7 +4,7 @@
   return eachItem(args.items, p => {
     const o = find(p.kind, p.id);
     const tag = p.kind === "tag", nested = p.kind !== "project";
-    const write = p.kind === "project" ? projectWriter(p, p.tags && p.tags.add, p.tags && p.tags.remove) : null;
+    const write = p.kind === "project" ? fieldWriter(p, p.tags && p.tags.add, p.tags && p.tags.remove) : null;
     let pos = null;
     if (p.move) {
       if (p.move.parent === null) pos = tag ? tags.ending : library.ending;

@@ -59,9 +59,11 @@ const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
 // Throws "<what> not found" for a missing lookup result, else returns it.
 const need = (o, what) => { if (!o) throw new Error(what + " not found"); return o; };
 const tagsOf = ids => (ids || []).map(id => need(Tag.byIdentifier(id), "tag " + id));
-// Validates the project fields of an add or edit item and looks up its tags before any mutation, then returns the function applying them.
+// The one owner of applying an add or edit item's shared fields to a task or a project (OmniFocus names them alike on both).
+// Validates what needs a lookup (tags, repetition rule) before any mutation, then returns the function applying the item to o.
 // Absent keys are untouched and null clears, so add (keys only when set) and edit share it; tagsAdd/tagsRemove are tag ids.
-const projectWriter = (p, tagsAdd, tagsRemove) => {
+// type is for projects, sequential for tasks; an item carries only its own kind's keys.
+const fieldWriter = (p, tagsAdd, tagsRemove) => {
   const add = tagsOf(tagsAdd), rem = tagsOf(tagsRemove);
   const rule = has(p, "repetition") && p.repetition !== null ? makeRule(p.repetition) : null;
   const date = (k, set) => { if (has(p, k)) set(p[k] === null ? null : parseDate(p[k])); };
@@ -74,6 +76,7 @@ const projectWriter = (p, tagsAdd, tagsRemove) => {
     date("planned", d => { o.plannedDate = d; });
     if (has(p, "estimatedMinutes")) o.estimatedMinutes = p.estimatedMinutes;
     if (has(p, "repetition")) o.repetitionRule = rule;
+    if (has(p, "sequential")) o.sequential = p.sequential;
     if (has(p, "completedByChildren")) o.completedByChildren = p.completedByChildren;
     add.forEach(g => o.addTag(g));
     rem.forEach(g => o.removeTag(g));

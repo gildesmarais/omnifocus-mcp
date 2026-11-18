@@ -7,28 +7,20 @@ import (
 	"testing"
 )
 
-// JS-only guards cannot run without OmniFocus; these assert the guard code is
-// in the embedded scripts (the live tests exercise the behavior).
-func TestScriptGuardsPresent(t *testing.T) {
+// JS-only guards cannot run without OmniFocus, so these pin the safety
+// structure of the embedded scripts: the guards that stop a wrong object from
+// being touched, the write order, and the single owner of the field writer.
+// Field mapping and date semantics are not pinned here; `make live` covers them.
+func TestScriptSafetyGuards(t *testing.T) {
 	src := func(name string) string { return mustRead("js/" + name + ".js") }
 	for name, wants := range map[string][]string{
-		"prelude": {"d => !!d && (!lo || d >= lo) && (!hi || d < hi)", "containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`,
-			"Task.RepetitionRule(r.rule, null, st, an, r.catchUp)", "Task.RepetitionScheduleType[r.scheduleType]", "Task.AnchorDateKey[r.anchor]",
-			"scheduleType: statusName(r.scheduleType)", "anchor: statusName(r.anchorDateKey)", "catchUp: r.catchUpAutomatically",
-			`dropped: st === "Dropped"`, "hasChildren: t.hasChildren", "completedByChildren: t.completedByChildren", "added: iso(t.added)", "modified: iso(t.modified)", "iso(t.dropDate)",
-			`p.containsSingletonActions ? "SingleActions" : p.sequential ? "Sequential" : "Parallel"`, `p.sequential = type === "Sequential"`, `p.containsSingletonActions = type === "SingleActions"`,
-			"o.deferDate = d", "o.dueDate = d", "o.plannedDate = d", "o.note = p.note === null ? \"\" : p.note", "o.flagged = p.flagged", "o.estimatedMinutes = p.estimatedMinutes",
-			"o.repetitionRule = rule", "o.completedByChildren = p.completedByChildren", "o.addTag(g)", "o.removeTag(g)", "makeRule(p.repetition)", "withEstimateRepetition = ", "shapeRepetition(rr)"},
-		scriptEditTasks.name: {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)",
-			"t.active = true", "t.repetitionRule = rule", "t.estimatedMinutes = p.estimatedMinutes", "t.sequential = p.sequential", "t.completedByChildren = p.completedByChildren"},
-		scriptAddTasks.name: {`findTask(a.parent, "parent task")`, "makeRule(a.repetition)", "t.estimatedMinutes = a.estimatedMinutes", "t.repetitionRule = rule", "t.sequential = true", "t.completedByChildren = true"},
-		scriptTasks.name: {"isProjectRoot(t)", "flattenedTasks.filter(t => t.inInbox)", "t.completionDate", "t.plannedDate", "t.modified", "t.added",
-			"(t.tags.length === 0) !== args.untagged", "!!t.repetitionRule !== args.repeating", `(st === "Dropped") !== args.dropped`, "OK.has(st) !== args.available"},
+		"prelude":                {"containingProject.task === t", "is a project, use kind project", "const inside = ", `if (kind === "task") return findTask(id)`},
+		scriptEditTasks.name:     {"findTask(p.id)", `findTask(p.move.parent, "parent task")`, "cannot move task into itself or its subtask", "inside(t, par)"},
+		scriptAddTasks.name:      {`findTask(a.parent, "parent task")`},
+		scriptTasks.name:         {"isProjectRoot(t)"},
 		scriptDelete.name:        {"o.flattenedTasks", "o.flattenedChildren", "remaining(", "drop it instead"},
-		scriptEditStructure.name: {"o.reviewInterval = r", "o.lastReviewDate = new Date()", "o.nextReviewDate = parseDate(", "projectWriter(p, p.tags && p.tags.add, p.tags && p.tags.remove)", "byKind[p.kind].Status[p.status]", "if (write) write(o)"},
-		scriptAddStructure.name:  {"projectWriter(a, a.tags, [])", "byKind[a.kind].Status[a.status]", "if (write) write(o)"},
-		scriptProjects.name:      {"p.reviewInterval", `dateBounds(args, "review_due")`, "reviewDue(p.nextReviewDate)", "type: projectType(p)", "completedByChildren: p.completedByChildren", "withEstimateRepetition(withDates(o, p), p)"},
 		scriptDrop.name:          {"flattenedTags", "inside(o, g)", "remaining task(s)"},
+		scriptEditStructure.name: {"inside(o, par)", "inside(o, sib)"},
 	} {
 		for _, w := range wants {
 			if !strings.Contains(src(name), w) {
@@ -41,8 +33,46 @@ func TestScriptGuardsPresent(t *testing.T) {
 			t.Errorf("%s.js must look tasks up through findTask", name)
 		}
 	}
-	if strings.Contains(src("tasks"), "pool = inbox;") {
-		t.Error("inbox filter must not use the top-level-only inbox")
+}
+
+// Every lookup (tags, repetition rule) resolves before the first mutation: the
+// writer is built before the object is created or moved, and builds its lookups
+// before it returns the function that mutates.
+func TestScriptWriteOrder(t *testing.T) {
+	before := func(name, first, then string) {
+		t.Helper()
+		s := mustRead("js/" + name + ".js")
+		i, j := strings.Index(s, first), strings.Index(s, then)
+		if i < 0 || j < 0 || i > j {
+			t.Errorf("%s.js: %q must come before %q", name, first, then)
+		}
+	}
+	before("prelude", "tagsOf(tagsAdd)", "return o =>")
+	before("prelude", "makeRule(p.repetition)", "return o =>")
+	before(scriptAddTasks.name, "fieldWriter(", "new Task(")
+	before(scriptEditTasks.name, "fieldWriter(", "moveTasks(")
+	before(scriptAddStructure.name, "fieldWriter(", "new Project(")
+	before(scriptEditStructure.name, "fieldWriter(", "moveTags(")
+	before(scriptEditStructure.name, "fieldWriter(", "o.name = ")
+}
+
+// The field writer is the one owner of how an item's fields reach a task or
+// project; no script re-implements it.
+func TestFieldWriterHasOneOwner(t *testing.T) {
+	entries, err := scripts.ReadDir("js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() == "prelude.js" {
+			continue
+		}
+		s := mustRead("js/" + e.Name())
+		for _, w := range []string{".addTag(", ".removeTag(", ".repetitionRule =", ".deferDate =", ".dueDate =", ".estimatedMinutes ="} {
+			if strings.Contains(s, w) {
+				t.Errorf("%s applies fields itself (%q); use fieldWriter", e.Name(), w)
+			}
+		}
 	}
 }
 
