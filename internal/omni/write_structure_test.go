@@ -279,33 +279,41 @@ func TestStructEditProjectWire(t *testing.T) {
 
 func TestStructEditProjectValidation(t *testing.T) {
 	for name, tc := range map[string]struct{ in, want string }{
-		"bad type":         {`{"kind":"project","id":"a","type":"sequential"}`, "type"},
-		"empty date":       {`{"kind":"project","id":"a","due":""}`, "use null to clear"},
-		"bad defer":        {`{"kind":"project","id":"a","defer":"soon"}`, "defer"},
-		"bad due":          {`{"kind":"project","id":"a","due":"soon"}`, "due"},
-		"bad planned":      {`{"kind":"project","id":"a","planned":"soon"}`, "planned"},
-		"negative est":     {`{"kind":"project","id":"a","estimatedMinutes":-1}`, "estimatedMinutes"},
-		"bad repetition":   {`{"kind":"project","id":"a","repetition":{"rule":"FREQ=DAILY","scheduleType":"None","anchor":"DueDate","catchUp":false}}`, "scheduleType"},
-		"unknown tag":      {`{"kind":"project","id":"a","tags":{"add":["nope"]}}`, "unknown tag"},
-		"add and remove":   {`{"kind":"project","id":"a","tags":{"add":["home"],"remove":["t1"]}}`, "both added and removed"},
-		"empty tag edit":   {`{"kind":"project","id":"a","tags":{}}`, "changes nothing"},
-		"tag type":         {`{"kind":"tag","id":"a","type":"Parallel"}`, "only for projects, not tag"},
-		"tag note null":    {`{"kind":"tag","id":"a","note":null}`, "only for projects, not tag"},
-		"tag flagged":      {`{"kind":"tag","id":"a","flagged":false}`, "only for projects"},
-		"tag tags":         {`{"kind":"tag","id":"a","tags":{"add":["home"]}}`, "only for projects"},
-		"tag estimate":     {`{"kind":"tag","id":"a","estimatedMinutes":null}`, "only for projects"},
-		"tag repetition":   {`{"kind":"tag","id":"a","repetition":null}`, "only for projects"},
-		"tag cbc":          {`{"kind":"tag","id":"a","completedByChildren":true}`, "only for projects"},
-		"tag due":          {`{"kind":"tag","id":"a","due":"2026-11-20"}`, "only for projects"},
-		"folder defer":     {`{"kind":"folder","id":"a","defer":null}`, "only for projects, not folder"},
-		"folder planned":   {`{"kind":"folder","id":"a","planned":null}`, "only for projects, not folder"},
-		"folder on hold":   {`{"kind":"folder","id":"a","status":"OnHold"}`, "not one of [Active] for a folder"},
-		"folder dropped":   {`{"kind":"folder","id":"a","status":"Dropped"}`, "not one of [Active] for a folder"},
-		"folder done":      {`{"kind":"folder","id":"a","status":"Done"}`, "status"},
-		"project dropped":  {`{"kind":"project","id":"a","status":"Dropped"}`, "status"},
-		"tag done":         {`{"kind":"tag","id":"a","status":"Done"}`, "status"},
-		"old sequential":   {`{"kind":"project","id":"a","sequential":true}`, "changes nothing"},
-		"project null tag": {`{"kind":"project","id":"a","tags":null}`, "changes nothing"},
+		"bad type":          {`{"kind":"project","id":"a","type":"sequential"}`, "type"},
+		"empty date":        {`{"kind":"project","id":"a","due":""}`, "use null to clear"},
+		"bad defer":         {`{"kind":"project","id":"a","defer":"soon"}`, "defer"},
+		"bad due":           {`{"kind":"project","id":"a","due":"soon"}`, "due"},
+		"bad planned":       {`{"kind":"project","id":"a","planned":"soon"}`, "planned"},
+		"negative est":      {`{"kind":"project","id":"a","estimatedMinutes":-1}`, "estimatedMinutes"},
+		"bad repetition":    {`{"kind":"project","id":"a","repetition":{"rule":"FREQ=DAILY","scheduleType":"None","anchor":"DueDate","catchUp":false}}`, "scheduleType"},
+		"unknown tag":       {`{"kind":"project","id":"a","tags":{"add":["nope"]}}`, "unknown tag"},
+		"add and remove":    {`{"kind":"project","id":"a","tags":{"add":["home"],"remove":["t1"]}}`, "both added and removed"},
+		"empty tag edit":    {`{"kind":"project","id":"a","tags":{}}`, "changes nothing"},
+		"tag type":          {`{"kind":"tag","id":"a","type":"Parallel"}`, "only for projects, not tag"},
+		"tag note null":     {`{"kind":"tag","id":"a","note":null}`, "only for projects, not tag"},
+		"tag flagged":       {`{"kind":"tag","id":"a","flagged":false}`, "only for projects"},
+		"tag tags":          {`{"kind":"tag","id":"a","tags":{"add":["home"]}}`, "only for projects"},
+		"tag estimate":      {`{"kind":"tag","id":"a","estimatedMinutes":null}`, "only for projects"},
+		"tag repetition":    {`{"kind":"tag","id":"a","repetition":null}`, "only for projects"},
+		"tag cbc":           {`{"kind":"tag","id":"a","completedByChildren":true}`, "only for projects"},
+		"tag due":           {`{"kind":"tag","id":"a","due":"2026-11-20"}`, "only for projects"},
+		"folder defer":      {`{"kind":"folder","id":"a","defer":null}`, "only for projects, not folder"},
+		"folder planned":    {`{"kind":"folder","id":"a","planned":null}`, "only for projects, not folder"},
+		"folder on hold":    {`{"kind":"folder","id":"a","status":"OnHold"}`, "not one of [Active] for a folder"},
+		"folder dropped":    {`{"kind":"folder","id":"a","status":"Dropped"}`, "not one of [Active] for a folder"},
+		"folder done":       {`{"kind":"folder","id":"a","status":"Done"}`, "status"},
+		"project dropped":   {`{"kind":"project","id":"a","status":"Dropped"}`, "status"},
+		"tag done":          {`{"kind":"tag","id":"a","status":"Done"}`, "status"},
+		"old sequential":    {`{"kind":"project","id":"a","sequential":true}`, "changes nothing"},
+		"project null tag":  {`{"kind":"project","id":"a","tags":null}`, "changes nothing"},
+		"move no parent":    {`{"kind":"tag","id":"a","move":{}}`, "parent is required"},
+		"move empty":        {`{"kind":"tag","id":"a","move":{"parent":""}}`, "use null for the root"},
+		"move into self":    {`{"kind":"tag","id":"a","move":{"parent":"a"}}`, "own parent"},
+		"move and reorder":  {`{"kind":"tag","id":"a","move":{"parent":"p"},"reorder":{"after":"b"}}`, "mutually exclusive"},
+		"reorder neither":   {`{"kind":"tag","id":"a","reorder":{}}`, "exactly one"},
+		"reorder both":      {`{"kind":"tag","id":"a","reorder":{"before":"b","after":"c"}}`, "exactly one"},
+		"reorder self pre":  {`{"kind":"tag","id":"a","reorder":{"before":"a"}}`, "own sibling"},
+		"reorder self post": {`{"kind":"tag","id":"a","reorder":{"after":"a"}}`, "own sibling"},
 	} {
 		_, err := validEdit(decodeStructEdit(t, tc.in), testTags)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -395,5 +403,33 @@ func TestProjectEditNullEstimateIsNotChecked(t *testing.T) {
 	}
 	if err := (ProjectEdit{EstimatedMinutes: Nullable[int]{Set: true, Value: -5}}).check(); err == nil {
 		t.Fatal("want error for a set negative estimate")
+	}
+}
+
+func TestStructEditMoveAndReorderAccepted(t *testing.T) {
+	for name, in := range map[string]string{
+		"move to root":   `{"kind":"tag","id":"a","move":{"parent":null}}`,
+		"move to parent": `{"kind":"tag","id":"a","move":{"parent":"p"}}`,
+		"reorder before": `{"kind":"tag","id":"a","reorder":{"before":"b"}}`,
+		"reorder after":  `{"kind":"tag","id":"a","reorder":{"after":"b"}}`,
+	} {
+		if _, err := validEdit(decodeStructEdit(t, in), testTags); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestCheckStatusAllowsUnsetAndSupported(t *testing.T) {
+	if err := checkStatus(addStatuses, kindFolder, ""); err != nil {
+		t.Errorf("unset status on a kind without statuses: %v", err)
+	}
+	if err := checkStatus(editStatuses, kindFolder, "Active"); err != nil {
+		t.Errorf("folder edit Active: %v", err)
+	}
+	if err := checkStatus(addStatuses, kindTag, "OnHold"); err != nil {
+		t.Errorf("tag OnHold: %v", err)
+	}
+	if err := checkStatus(addStatuses, kindFolder, "Active"); err == nil || !strings.Contains(err.Error(), "not supported for folder") {
+		t.Errorf("folder add status: %v", err)
 	}
 }

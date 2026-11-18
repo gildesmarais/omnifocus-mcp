@@ -106,6 +106,21 @@ func TestClassify(t *testing.T) {
 	if errors.Is(classify("execution error: Can't get object. (-1728)", cause), ErrNotRunning) {
 		t.Error("-1728 is a script error, not 'not running'")
 	}
+	// Each marker alone is enough.
+	for stderr, want := range map[string]error{
+		"error (-1743)":              ErrNotAuthorized,
+		"Not authorized to send":     ErrNotAuthorized,
+		"error (-600)":               ErrNotRunning,
+		"Application isn't running.": ErrNotRunning,
+	} {
+		if got := classify(stderr, cause); !errors.Is(got, want) {
+			t.Errorf("%q: got %v, want %v", stderr, got, want)
+		}
+	}
+	got := classify(" boom \n", cause)
+	if !errors.Is(got, cause) || !strings.HasSuffix(got.Error(), ": boom") {
+		t.Errorf("generic error must wrap the cause and carry trimmed stderr: %v", got)
+	}
 }
 
 func TestMarshalEscapesLineSeparators(t *testing.T) {
@@ -195,5 +210,37 @@ func TestEveryScriptFileExists(t *testing.T) {
 		if !files[n] {
 			t.Errorf("script %q has no js file", n)
 		}
+	}
+}
+
+func TestDefaultTimeouts(t *testing.T) {
+	if DefaultTimeout != 30*time.Second || DefaultWriteTimeout != 120*time.Second {
+		t.Fatalf("timeouts = %v, %v", DefaultTimeout, DefaultWriteTimeout)
+	}
+	if got := (&Bridge{}).timeoutFor(scriptTasks); got != 30*time.Second {
+		t.Fatalf("read default = %v", got)
+	}
+	if got := (&Bridge{}).timeoutFor(scriptDrop); got != 120*time.Second {
+		t.Fatalf("write default = %v", got)
+	}
+	if b := (&Bridge{Timeout: time.Second, WriteTimeout: 2 * time.Second}); b.timeoutFor(scriptTasks) != time.Second || b.timeoutFor(scriptDrop) != 2*time.Second {
+		t.Fatal("explicit timeouts must win over defaults")
+	}
+}
+
+func TestNewUsesOsascriptRunner(t *testing.T) {
+	if _, ok := New().Runner.(OsascriptRunner); !ok {
+		t.Fatalf("New().Runner = %T", New().Runner)
+	}
+}
+
+// A cancelled context stops exec before osascript starts, so the error path
+// of Run is reachable without shelling out.
+func TestOsascriptRunnerReportsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	out, err := OsascriptRunner{}.Run(ctx, "x")
+	if out != "" || !errors.Is(err, context.Canceled) || err.Error() != "osascript: context canceled" {
+		t.Fatalf("out=%q err=%v", out, err)
 	}
 }

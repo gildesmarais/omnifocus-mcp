@@ -3,6 +3,7 @@ package omni
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -319,5 +320,46 @@ func TestAddTasksResolvesTagNameToID(t *testing.T) {
 	}
 	if !strings.Contains(r.writeSrc, `\"tags\":[\"t1\"]`) || strings.Contains(r.writeSrc, "home") {
 		t.Fatalf("add script must carry the tag id, not the name: %s", r.writeSrc)
+	}
+}
+
+func TestResolveTagsPrefersIDOverNameCollision(t *testing.T) {
+	tags := []Tag{{ID: "x", Name: "a"}, {ID: "y", Name: "x"}}
+	ids, err := resolveTags([]string{"x"}, tags)
+	if err != nil || len(ids) != 1 || ids[0] != "x" {
+		t.Fatalf("%v %v", ids, err)
+	}
+}
+
+func TestPatchEstimateValidatedOnlyWhenSetAndNotNull(t *testing.T) {
+	if _, err := newPatchItem(decodeEdit(t, `{"id":"a","name":"n"}`), nil); err != nil {
+		t.Fatalf("unset estimate: %v", err)
+	}
+	if _, err := newPatchItem(TaskEdit{ID: "a", EstimatedMinutes: Nullable[int]{Set: true, Null: true, Value: -5}}, nil); err != nil {
+		t.Fatalf("null estimate clears and is not checked: %v", err)
+	}
+	if _, err := newPatchItem(TaskEdit{ID: "a", EstimatedMinutes: Nullable[int]{Set: true, Value: -5}}, nil); err == nil {
+		t.Fatal("set negative estimate must fail")
+	}
+}
+
+func TestEditTasksReadsTagsOnlyForNonEmptyTagEdits(t *testing.T) {
+	ok := `[{"id":"a","ok":true,"task":{"id":"a","name":"N","status":"Available","tags":[]}}]`
+	for name, tc := range map[string]struct {
+		js       string
+		wantRead bool
+	}{
+		"empty edit": {`{"id":"a","name":"N","tags":{}}`, false},
+		"no edit":    {`{"id":"a","name":"N"}`, false},
+		"add":        {`{"id":"a","tags":{"add":["home"]}}`, true},
+		"remove":     {`{"id":"a","tags":{"remove":["home"]}}`, true},
+	} {
+		r := &route{tags: `[{"id":"t1","name":"home"}]`, res: ok}
+		if _, err := (&Bridge{Runner: r}).EditTasks(context.Background(), []TaskEdit{decodeEdit(t, tc.js)}); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if read := slices.Contains(r.scripts, "tags"); read != tc.wantRead {
+			t.Errorf("%s: tags read = %v, want %v (%v)", name, read, tc.wantRead, r.scripts)
+		}
 	}
 }
